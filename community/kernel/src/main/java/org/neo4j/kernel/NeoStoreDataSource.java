@@ -70,7 +70,6 @@ import org.neo4j.kernel.impl.core.LabelTokenHolder;
 import org.neo4j.kernel.impl.core.PropertyKeyTokenHolder;
 import org.neo4j.kernel.impl.core.RelationshipTypeTokenHolder;
 import org.neo4j.kernel.impl.factory.AccessCapability;
-import org.neo4j.kernel.impl.factory.GraphDatabaseFacadeFactory;
 import org.neo4j.kernel.impl.factory.OperationalMode;
 import org.neo4j.kernel.impl.index.ExplicitIndexStore;
 import org.neo4j.kernel.impl.index.IndexConfigStore;
@@ -78,7 +77,6 @@ import org.neo4j.kernel.impl.locking.LockService;
 import org.neo4j.kernel.impl.locking.ReentrantLockService;
 import org.neo4j.kernel.impl.locking.StatementLocksFactory;
 import org.neo4j.kernel.impl.logging.LogService;
-import org.neo4j.kernel.impl.newapi.DefaultCursors;
 import org.neo4j.kernel.impl.proc.Procedures;
 import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageEngine;
 import org.neo4j.kernel.impl.storageengine.impl.recordstorage.id.IdController;
@@ -586,7 +584,7 @@ public class NeoStoreDataSource implements Lifecycle, IndexProviders
             SynchronizedArrayIdOrderingQueue explicitIndexTransactionOrdering, TransactionIdStore transactionIdStore )
     {
         TransactionMetadataCache transactionMetadataCache = new TransactionMetadataCache( 100_000 );
-        if ( config.get( GraphDatabaseFacadeFactory.Configuration.ephemeral ) )
+        if ( config.get( GraphDatabaseSettings.ephemeral ) )
         {
             config.augmentDefaults( GraphDatabaseSettings.keep_logical_logs, "1 files" );
         }
@@ -657,8 +655,7 @@ public class NeoStoreDataSource implements Lifecycle, IndexProviders
          */
         Supplier<Kernel> kernelProvider = () -> kernelModule.kernelAPI();
 
-        ConstraintIndexCreator constraintIndexCreator = new ConstraintIndexCreator( kernelProvider, indexingService,
-                propertyAccessor );
+        ConstraintIndexCreator constraintIndexCreator = new ConstraintIndexCreator( kernelProvider, indexingService, propertyAccessor, logProvider );
 
         ExplicitIndexStore explicitIndexStore = new ExplicitIndexStore( config,
                 indexConfigStore, kernelProvider, explicitIndexProviderLookup );
@@ -674,7 +671,7 @@ public class NeoStoreDataSource implements Lifecycle, IndexProviders
                 constraintIndexCreator, statementOperationParts, schemaWriteGuard, transactionHeaderInformationFactory,
                 transactionCommitProcess, indexConfigStore, explicitIndexProviderLookup, hooks, transactionMonitor,
                 availabilityGuard, tracers, storageEngine, procedures, transactionIdStore, clock,
-                cpuClockRef, heapAllocationRef, accessCapability, DefaultCursors::new, autoIndexing,
+                cpuClockRef, heapAllocationRef, accessCapability, autoIndexing,
                 explicitIndexStore, versionContextSupplier, collectionsFactorySupplier, constraintSemantics,
                 databaseSchemaState, indexingService, propertyKeyTokenHolder ) );
 

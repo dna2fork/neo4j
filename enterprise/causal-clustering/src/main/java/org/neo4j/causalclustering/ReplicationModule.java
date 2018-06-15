@@ -34,9 +34,9 @@ import org.neo4j.causalclustering.core.replication.RaftReplicator;
 import org.neo4j.causalclustering.core.replication.session.GlobalSession;
 import org.neo4j.causalclustering.core.replication.session.GlobalSessionTrackerState;
 import org.neo4j.causalclustering.core.replication.session.LocalSessionPool;
+import org.neo4j.causalclustering.core.state.storage.DurableStateStorage;
 import org.neo4j.causalclustering.helper.ConstantTimeTimeoutStrategy;
 import org.neo4j.causalclustering.helper.ExponentialBackoffStrategy;
-import org.neo4j.causalclustering.core.state.storage.DurableStateStorage;
 import org.neo4j.causalclustering.helper.TimeoutStrategy;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.Outbound;
@@ -62,7 +62,7 @@ public class ReplicationModule
 
         DurableStateStorage<GlobalSessionTrackerState> sessionTrackerStorage;
         sessionTrackerStorage = life.add( new DurableStateStorage<>( fileSystem, clusterStateDirectory,
-                SESSION_TRACKER_NAME, new GlobalSessionTrackerState.Marshal( new MemberId.Marshal() ),
+                SESSION_TRACKER_NAME, new GlobalSessionTrackerState.Marshal( MemberId.MARSHAL ),
                 config.get( CausalClusteringSettings.global_session_tracker_state_size ), logProvider ) );
 
         sessionTracker = new SessionTracker( sessionTrackerStorage );
@@ -78,6 +78,7 @@ public class ReplicationModule
 
         TimeoutStrategy progressRetryStrategy = new ExponentialBackoffStrategy( initialBackoff, upperBoundBackoff );
         TimeoutStrategy leaderRetryStrategy = new ConstantTimeTimeoutStrategy( leaderBackoff );
+        long availabilityTimeoutMillis = config.get( CausalClusteringSettings.replication_retry_timeout_base ).toMillis();
         replicator = new RaftReplicator(
                 consensusModule.raftMachine(),
                 myself,
@@ -86,6 +87,7 @@ public class ReplicationModule
                 progressTracker,
                 progressRetryStrategy,
                 leaderRetryStrategy,
+                availabilityTimeoutMillis,
                 platformModule.availabilityGuard, logProvider, replicationLimit, platformModule.monitors );
     }
 

@@ -22,6 +22,8 @@
  */
 package org.neo4j.cypher.internal.runtime.compiled.expressions
 
+import java.util.function.Consumer
+
 import org.neo4j.codegen
 import org.neo4j.codegen.CodeGenerator.generateCode
 import org.neo4j.codegen.Expression.{constant, getStatic, invoke, newArray}
@@ -32,8 +34,9 @@ import org.neo4j.codegen.Parameter.param
 import org.neo4j.codegen.TypeReference.typeReference
 import org.neo4j.codegen._
 import org.neo4j.codegen.bytecode.ByteCode.BYTECODE
+import org.neo4j.codegen.source.SourceCode.{PRINT_SOURCE, SOURCECODE}
+import org.neo4j.cypher.internal.runtime.DbAccess
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
-import org.neo4j.internal.kernel.api.Transaction
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable._
 import org.neo4j.values.virtual.MapValue
@@ -43,6 +46,8 @@ import org.opencypher.v9_0.frontend.helpers.using
   * Produces runnable code from an IntermediateRepresentation
   */
 object CodeGeneration {
+
+  private val DEBUG = false
   private val VALUES = classOf[Values]
   private val VALUE = classOf[Value]
   private val LONG = classOf[LongValue]
@@ -52,13 +57,13 @@ object CodeGeneration {
   private val INTERFACE = classOf[CompiledExpression]
   private val COMPUTE_METHOD = method(classOf[AnyValue], "evaluate",
                                       param(classOf[ExecutionContext], "context"),
-                                      param(classOf[Transaction], "tx"),
+                                      param(classOf[DbAccess], "dbAccess"),
                                       param(classOf[MapValue], "params"))
 
   private def className(): String = "Expression" + System.nanoTime()
 
   def compile(ir: IntermediateRepresentation): CompiledExpression = {
-    val handle = using(generateCode(BYTECODE).generateClass(PACKAGE_NAME, className(), INTERFACE)) { clazz =>
+    val handle = using(generator) { clazz =>
       using(clazz.generate(COMPUTE_METHOD)) { block =>
         block.returns(compileExpression(ir, block))
       }
@@ -67,6 +72,10 @@ object CodeGeneration {
 
     handle.loadClass().newInstance().asInstanceOf[CompiledExpression]
   }
+
+  private def generator =
+    if (DEBUG) generateCode(SOURCECODE, PRINT_SOURCE).generateClass(PACKAGE_NAME, className(), INTERFACE)
+    else generateCode(BYTECODE).generateClass(PACKAGE_NAME, className(), INTERFACE)
 
   private def compileExpression(ir: IntermediateRepresentation, block: CodeBlock): codegen.Expression = ir match {
     //Foo.method(p1, p2,...)
@@ -97,10 +106,55 @@ object CodeGeneration {
     case TRUE => getStatic(staticField(VALUES, classOf[BooleanValue], "TRUE"))
     //Values.FALSE
     case FALSE => getStatic(staticField(VALUES, classOf[BooleanValue], "FALSE"))
-      //new ArrayValue[]{p1, p2,...}
+    //new ArrayValue[]{p1, p2,...}
     case ArrayLiteral(values) => newArray(typeReference(classOf[AnyValue]),
-                                          values.map(v => compileExpression(v, block)):_*)
+                                          values.map(v => compileExpression(v, block)): _*)
+
+    //condition ? onTrue : onFalse
+    case Ternary(condition, onTrue, onFalse) =>
+      Expression.ternary(compileExpression(condition, block),
+                         compileExpression(onTrue, block),
+                         compileExpression(onFalse, block))
+    //lhs == rhs
+    case Eq(lhs, rhs) =>
+      Expression.equal(compileExpression(lhs, block), compileExpression(rhs, block))
+
+    //lhs != rhs
+    case NotEq(lhs, rhs) =>
+      Expression.notEqual(compileExpression(lhs, block), compileExpression(rhs, block))
+
+    //run multiple ops in a block, the value of the block is the last expression
+    case Block(ops) => ops.map(compileExpression(_, block)).last
+
+    //if (test) {onTrue}
+    case Condition(test, onTrue) =>
+      using(block.ifStatement(compileExpression(test, block)))(compileExpression(onTrue, _))
+
+    //typ name;
+    case DeclareLocalVariable(typ, name) =>
+      block.declare(typeReference(typ), name)
+
+    //name = value;
+    case AssignToLocalVariable(name, value) =>
+      block.assign(block.local(name), compileExpression(value, block))
+      Expression.EMPTY
+
+    //try {ops} catch(exception name)(onError)
+    case TryCatch(ops, onError, exception, name) =>
+      block.tryCatch(new Consumer[CodeBlock] {
+        override def accept(mainBlock: CodeBlock): Unit = compileExpression(ops, mainBlock)
+      }, new Consumer[CodeBlock] {
+        override def accept(errorBlock: CodeBlock): Unit = compileExpression(onError, errorBlock)
+      }, Parameter.param(exception, name))
+      Expression.EMPTY
+
+    //throw error
+    case Throw(error) =>
+      block.throwException(compileExpression(error, block))
+      Expression.EMPTY
+
+    //lhs && rhs
+    case BooleanAnd(lhs, rhs) =>
+      Expression.and(compileExpression(lhs, block), compileExpression(rhs, block))
   }
-
-
 }

@@ -19,9 +19,11 @@
  */
 package org.neo4j.kernel.impl.index.schema;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.neo4j.collection.PrimitiveLongResourceIterator;
 import org.neo4j.graphdb.Resource;
-import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.internal.kernel.api.IndexOrder;
 import org.neo4j.internal.kernel.api.IndexQuery;
 import org.neo4j.internal.kernel.api.IndexQuery.ExistsPredicate;
@@ -55,14 +57,19 @@ class TemporalIndexReader extends TemporalIndexCache<TemporalIndexPartReader<?>>
     @Override
     public long countIndexedNodes( long nodeId, Value... propertyValues )
     {
-        NativeSchemaIndexReader<?,NativeSchemaValue> partReader = uncheckedSelect( propertyValues[0].valueGroup() );
+        NativeIndexReader<?,NativeIndexValue> partReader = uncheckedSelect( propertyValues[0].valueGroup() );
         return partReader == null ? 0L : partReader.countIndexedNodes( nodeId, propertyValues );
     }
 
     @Override
     public IndexSampler createSampler()
     {
-        return new FusionIndexSampler( Iterators.stream( iterator() ).map( IndexReader::createSampler ).toArray( IndexSampler[]::new ) );
+        List<IndexSampler> samplers = new ArrayList<>();
+        for ( TemporalIndexPartReader<?> partReader : this )
+        {
+            samplers.add( partReader.createSampler() );
+        }
+        return new FusionIndexSampler( samplers );
     }
 
     @Override
@@ -86,7 +93,7 @@ class TemporalIndexReader extends TemporalIndexCache<TemporalIndexPartReader<?>>
             loadAll();
             BridgingIndexProgressor multiProgressor = new BridgingIndexProgressor( cursor, descriptor.schema().getPropertyIds() );
             cursor.initialize( descriptor, multiProgressor, predicates );
-            for ( NativeSchemaIndexReader<?,NativeSchemaValue> reader : this )
+            for ( NativeIndexReader<?,NativeIndexValue> reader : this )
             {
                 reader.query( multiProgressor, indexOrder, predicates );
             }
@@ -95,7 +102,7 @@ class TemporalIndexReader extends TemporalIndexCache<TemporalIndexPartReader<?>>
         {
             if ( validPredicate( predicate ) )
             {
-                NativeSchemaIndexReader<?,NativeSchemaValue> part = uncheckedSelect( predicate.valueGroup() );
+                NativeIndexReader<?,NativeIndexValue> part = uncheckedSelect( predicate.valueGroup() );
                 if ( part != null )
                 {
                     part.query( cursor, indexOrder, predicates );

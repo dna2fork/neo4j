@@ -67,6 +67,7 @@ import static org.neo4j.helpers.TimeUtil.parseTimeMillis;
 import static org.neo4j.kernel.impl.transaction.command.Commands.createIndexRule;
 import static org.neo4j.kernel.impl.transaction.command.Commands.transactionRepresentation;
 import static org.neo4j.kernel.impl.transaction.log.Commitment.NO_COMMITMENT;
+import static org.neo4j.storageengine.api.txstate.TxStateVisitor.NO_DECORATION;
 
 public class IndexWorkSyncTransactionApplicationStressIT
 {
@@ -204,7 +205,7 @@ public class IndexWorkSyncTransactionApplicationStressIT
             Collection<StorageCommand> commands = new ArrayList<>();
             try ( StorageReader statement = storageEngine.newReader() )
             {
-                storageEngine.createCommands( commands, txState, statement, null, 0 );
+                storageEngine.createCommands( commands, txState, statement, null, 0, NO_DECORATION );
             }
             return tx( commands );
         }

@@ -73,6 +73,7 @@ import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.configuration.Settings;
 import org.neo4j.kernel.configuration.ssl.SslPolicyLoader;
 import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInProcedures;
 import org.neo4j.kernel.ha.BranchDetectingTxVerifier;
 import org.neo4j.kernel.ha.BranchedDataMigrator;
 import org.neo4j.kernel.ha.DelegateInvocationHandler;
@@ -432,7 +433,6 @@ public class HighlyAvailableEditionModule
                         platformModule.dependencies.resolveDependency( TransactionIdStore.class ),
                         platformModule.dependencies.resolveDependency( LogicalTransactionStore.class ),
                         platformModule.dependencies.resolveDependency( NeoStoreDataSource.class ),
-                        platformModule.dependencies.resolveDependency( PageCache.class ),
                         platformModule.storeCopyCheckPointMutex,
                         logging.getInternalLogProvider() );
 
@@ -554,6 +554,7 @@ public class HighlyAvailableEditionModule
     public void registerEditionSpecificProcedures( Procedures procedures ) throws KernelException
     {
         procedures.registerProcedure( EnterpriseBuiltInDbmsProcedures.class, true );
+        procedures.registerProcedure( EnterpriseBuiltInProcedures.class, true );
     }
 
     private StatementLocksFactory createStatementLocksFactory( ComponentSwitcherContainer componentSwitcherContainer,

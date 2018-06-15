@@ -39,7 +39,8 @@ import org.neo4j.causalclustering.catchup.storecopy.LocalDatabase;
 import org.neo4j.causalclustering.catchup.storecopy.StoreFiles;
 import org.neo4j.causalclustering.core.consensus.ConsensusModule;
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
-import org.neo4j.causalclustering.core.consensus.RaftProtocolClientInstaller;
+import org.neo4j.causalclustering.core.consensus.protocol.v1.RaftProtocolClientInstallerV1;
+import org.neo4j.causalclustering.core.consensus.protocol.v2.RaftProtocolClientInstallerV2;
 import org.neo4j.causalclustering.core.consensus.roles.Role;
 import org.neo4j.causalclustering.core.replication.ReplicationBenchmarkProcedure;
 import org.neo4j.causalclustering.core.replication.Replicator;
@@ -106,6 +107,7 @@ import org.neo4j.kernel.api.bolt.BoltConnectionTracker;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.configuration.ssl.SslPolicyLoader;
 import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInDbmsProcedures;
+import org.neo4j.kernel.enterprise.builtinprocs.EnterpriseBuiltInProcedures;
 import org.neo4j.kernel.impl.api.SchemaWriteGuard;
 import org.neo4j.kernel.impl.api.TransactionHeaderInformation;
 import org.neo4j.kernel.impl.coreapi.CoreAPIAvailabilityGuard;
@@ -138,7 +140,7 @@ import org.neo4j.logging.LogProvider;
 import org.neo4j.time.Clocks;
 import org.neo4j.udc.UsageData;
 
-import static java.util.Collections.singletonList;
+import static java.util.Arrays.asList;
 import static org.neo4j.causalclustering.core.CausalClusteringSettings.raft_messages_log_path;
 
 /**
@@ -178,6 +180,7 @@ public class EnterpriseCoreEditionModule extends EditionModule
     public void registerEditionSpecificProcedures( Procedures procedures ) throws KernelException
     {
         procedures.registerProcedure( EnterpriseBuiltInDbmsProcedures.class, true );
+        procedures.registerProcedure( EnterpriseBuiltInProcedures.class, true );
         procedures.register( new LegacyGetServersProcedure( topologyService, consensusModule.raftMachine(), config, logProvider ) );
 
         if ( config.get( CausalClusteringSettings.multi_dc_license ) )
@@ -270,9 +273,10 @@ public class EnterpriseCoreEditionModule extends EditionModule
         ModifierProtocolRepository modifierProtocolRepository =
                 new ModifierProtocolRepository( Protocol.ModifierProtocols.values(), supportedModifierProtocols );
 
-        ProtocolInstallerRepository<ProtocolInstaller.Orientation.Client> protocolInstallerRepository =
-                new ProtocolInstallerRepository<>(
-                        singletonList( new RaftProtocolClientInstaller.Factory( clientPipelineBuilderFactory, logProvider ) ),
+        ProtocolInstallerRepository<ProtocolInstaller.Orientation.Client> protocolInstallerRepository = new ProtocolInstallerRepository<>(
+                asList( new RaftProtocolClientInstallerV2.Factory( clientPipelineBuilderFactory, logProvider ),
+                        new RaftProtocolClientInstallerV1.Factory( clientPipelineBuilderFactory,
+                                logProvider ) ),
                         ModifierProtocolInstaller.allClientInstallers );
 
         Duration handshakeTimeout = config.get( CausalClusteringSettings.handshake_timeout );

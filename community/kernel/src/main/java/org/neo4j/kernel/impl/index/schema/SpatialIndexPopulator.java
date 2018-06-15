@@ -25,7 +25,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.StreamSupport;
 
 import org.neo4j.gis.spatial.index.curves.SpaceFillingCurveConfiguration;
 import org.neo4j.io.fs.FileSystemAbstraction;
@@ -60,7 +59,7 @@ class SpatialIndexPopulator extends SpatialIndexCache<SpatialIndexPopulator.Part
     @Override
     public synchronized void create() throws IOException
     {
-        forAll( NativeSchemaIndexPopulator::clear, this );
+        forAll( NativeIndexPopulator::clear, this );
 
         // We must make sure to have at least one subindex:
         // to be able to persist failure and to have the right state in the beginning
@@ -73,7 +72,7 @@ class SpatialIndexPopulator extends SpatialIndexCache<SpatialIndexPopulator.Part
     @Override
     public synchronized void drop()
     {
-        forAll( NativeSchemaIndexPopulator::drop, this );
+        forAll( NativeIndexPopulator::drop, this );
     }
 
     @Override
@@ -110,7 +109,7 @@ class SpatialIndexPopulator extends SpatialIndexCache<SpatialIndexPopulator.Part
     public synchronized void close( boolean populationCompletedSuccessfully ) throws IOException
     {
         closeInstantiateCloseLock();
-        for ( NativeSchemaIndexPopulator part : this )
+        for ( NativeIndexPopulator part : this )
         {
             part.close( populationCompletedSuccessfully );
         }
@@ -119,7 +118,7 @@ class SpatialIndexPopulator extends SpatialIndexCache<SpatialIndexPopulator.Part
     @Override
     public synchronized void markAsFailed( String failure )
     {
-        for ( NativeSchemaIndexPopulator part : this )
+        for ( NativeIndexPopulator part : this )
         {
             part.markAsFailed( failure );
         }
@@ -136,13 +135,15 @@ class SpatialIndexPopulator extends SpatialIndexCache<SpatialIndexPopulator.Part
     @Override
     public IndexSample sampleResult()
     {
-        IndexSample[] indexSamples = StreamSupport.stream( this.spliterator(), false )
-                .map( PartPopulator::sampleResult )
-                .toArray( IndexSample[]::new );
-        return combineSamples( indexSamples );
+        List<IndexSample> samples = new ArrayList<>();
+        for ( PartPopulator partPopulator : this )
+        {
+            samples.add( partPopulator.sampleResult() );
+        }
+        return combineSamples( samples );
     }
 
-    static class PartPopulator extends NativeSchemaIndexPopulator<SpatialSchemaKey, NativeSchemaValue>
+    static class PartPopulator extends NativeIndexPopulator<SpatialIndexKey,NativeIndexValue>
     {
         private final SpaceFillingCurveConfiguration configuration;
         private final SpaceFillingCurveSettings settings;

@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -39,7 +38,6 @@ import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.tracing.cursor.context.VersionContextSupplier;
 import org.neo4j.kernel.api.exceptions.TransactionApplyKernelException;
 import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
-import org.neo4j.kernel.api.index.IndexProvider;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.api.labelscan.LabelScanWriter;
 import org.neo4j.kernel.api.labelscan.LoggingMonitor;
@@ -114,7 +112,6 @@ import org.neo4j.storageengine.api.lock.ResourceLocker;
 import org.neo4j.storageengine.api.schema.SchemaRule;
 import org.neo4j.storageengine.api.txstate.ReadableTransactionState;
 import org.neo4j.storageengine.api.txstate.TxStateVisitor;
-import org.neo4j.util.FeatureToggles;
 import org.neo4j.util.VisibleForTesting;
 import org.neo4j.util.concurrent.WorkSync;
 
@@ -124,9 +121,6 @@ import static org.neo4j.storageengine.api.TransactionApplicationMode.REVERSE_REC
 
 public class RecordStorageEngine implements StorageEngine, Lifecycle
 {
-    private static final boolean takePropertyReadLocks = FeatureToggles.flag(
-            RecordStorageEngine.class, "propertyReadLocks", false );
-
     private final IndexingService indexingService;
     private final NeoStores neoStores;
     private final PropertyKeyTokenHolder propertyKeyTokenHolder;
@@ -205,7 +199,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
             schemaStorage = new SchemaStorage( neoStores.getSchemaStore() );
 
             NeoStoreIndexStoreView neoStoreIndexStoreView = new NeoStoreIndexStoreView( lockService, neoStores );
-            Boolean readOnly = config.get( GraphDatabaseSettings.read_only ) && operationalMode == OperationalMode.single;
+            boolean readOnly = config.get( GraphDatabaseSettings.read_only ) && operationalMode == OperationalMode.single;
             monitors.addMonitorListener( new LoggingMonitor( logProvider.getLog( NativeLabelScanStore.class ) ) );
             labelScanStore = new NativeLabelScanStore( pageCache, storeDir, fs, new FullLabelStream( neoStoreIndexStoreView ),
                     readOnly, monitors, recoveryCleanupWorkCollector );
@@ -242,10 +236,8 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     public StorageReader newReader()
     {
         Supplier<IndexReaderFactory> indexReaderFactory = () -> new IndexReaderFactory.Caching( indexingService );
-        LockService lockService = takePropertyReadLocks ? this.lockService : NO_LOCK_SERVICE;
-
         return new RecordStorageReader( propertyKeyTokenHolder, labelTokenHolder, relationshipTypeTokenHolder, schemaStorage, neoStores, indexingService,
-                schemaCache, indexReaderFactory, labelScanStore::newReader, lockService, allocateCommandCreationContext() );
+                schemaCache, indexReaderFactory, labelScanStore::newReader, allocateCommandCreationContext() );
     }
 
     @Override
@@ -262,12 +254,8 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
 
     @SuppressWarnings( "resource" )
     @Override
-    public void createCommands(
-            Collection<StorageCommand> commands,
-            ReadableTransactionState txState,
-            StorageReader storageReader,
-            ResourceLocker locks,
-            long lastTransactionIdWhenStarted )
+    public void createCommands( Collection<StorageCommand> commands, ReadableTransactionState txState, StorageReader storageReader, ResourceLocker locks,
+            long lastTransactionIdWhenStarted, TxStateVisitor.Decorator additionalTxStateVisitor )
             throws TransactionFailureException, CreateConstraintFailureException, ConstraintValidationException
     {
         if ( txState != null )
@@ -284,9 +272,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
             TxStateVisitor txStateVisitor = new TransactionToRecordStateVisitor( recordState, schemaState,
                     schemaStorage, constraintSemantics, indexProviderMap );
             CountsRecordState countsRecordState = new CountsRecordState();
-            txStateVisitor = constraintSemantics.decorateTxStateVisitor( storageReader,
-                    txState,
-                    txStateVisitor );
+            txStateVisitor = additionalTxStateVisitor.apply( txStateVisitor );
             txStateVisitor = new TransactionCountingStateVisitor(
                     txStateVisitor, storageReader, txState, countsRecordState );
             try ( TxStateVisitor visitor = txStateVisitor )

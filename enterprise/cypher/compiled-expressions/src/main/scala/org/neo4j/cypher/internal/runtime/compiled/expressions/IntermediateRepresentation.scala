@@ -105,9 +105,115 @@ case object FALSE extends IntermediateRepresentation
 
 /**
   * Loads an array literal of the given inputs
-  * @param values
+  *
+  * @param values the values of the array
   */
 case class ArrayLiteral(values: Array[IntermediateRepresentation]) extends IntermediateRepresentation
+
+/**
+  * Defines ternary expression, i.e. {{{condition ? onTrue : onFalse}}}
+  *
+  * @param condition the condition to test
+  * @param onTrue    will be evaluted if condition is true
+  * @param onFalse   will be evaluated if condition is false
+  */
+case class Ternary(condition: IntermediateRepresentation,
+                   onTrue: IntermediateRepresentation,
+                   onFalse: IntermediateRepresentation) extends IntermediateRepresentation
+
+/**
+  * Defines equality or identy, i.e. {{{lhs == rhs}}}
+  *
+  * @param lhs the left-hand side to check
+  * @param rhs the right-hand side to check
+  */
+case class Eq(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation) extends IntermediateRepresentation
+
+/**
+  * Defines  {{{lhs != rhs}}}
+  *
+  * @param lhs the left-hand side to check
+  * @param rhs the right-hand side to check
+  */
+case class NotEq(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation) extends IntermediateRepresentation
+
+/**
+  * A block is a sequence of operations where the block evaluates to the last expression
+  * @param ops the operations to perform in the block
+  */
+case class Block(ops: Seq[IntermediateRepresentation]) extends IntermediateRepresentation
+
+/**
+  * A conditon executes the operation if the test evaluates to true.
+  *
+  *  {{{
+  *  if (test)
+  *  {
+  *    onTrue;
+  *  }
+  *  }}}
+  * @param test the condition to check
+  * @param onTrue the opertation to perform if the `test` evaluates to true
+  */
+case class Condition(test: IntermediateRepresentation, onTrue: IntermediateRepresentation)
+  extends IntermediateRepresentation
+
+/**
+  * Declare a local variable of the given type.
+  *
+  * {{{
+  * typ name;
+  * }}}
+  * @param typ the type of the variable
+  * @param name the name of the variable
+  */
+case class DeclareLocalVariable(typ: Class[_], name: String) extends IntermediateRepresentation
+
+/**
+  * Assign a variable to a value.
+  *
+  * {{{
+  * name = value;
+  * }}}
+  * @param name the name of the variable
+  * @param value the value to assign to the variable
+  */
+case class AssignToLocalVariable(name: String, value: IntermediateRepresentation) extends IntermediateRepresentation
+
+/**
+  * try-catch block
+  * {{{
+  *   try
+  *   {
+  *     ops;
+  *   }
+  *   catch (exception name)
+  *   {
+  *     onError;
+  *   }
+  * }}}
+  * @param ops the operation to perform in the happy path
+  * @param onError the operation to perform if an exception is caught
+  * @param exception the type of the exception
+  * @param name the name of the caught exception
+  */
+case class TryCatch(ops: IntermediateRepresentation, onError: IntermediateRepresentation, exception: Class[_], name: String) extends IntermediateRepresentation
+
+/**
+  * Throw an error
+  * @param error the error to throw
+  */
+case class Throw(error: IntermediateRepresentation) extends IntermediateRepresentation
+
+/**
+  * Boolean && operator
+  * {{{
+  *   lhs && rhs;
+  * }}}
+  * @param lhs the left-hand side of and
+  * @param rhs the right-hand side of and
+  */
+case class BooleanAnd(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation) extends IntermediateRepresentation
 
 /**
   * Defines a method
@@ -152,19 +258,40 @@ object IntermediateRepresentation {
 
   def load(variable: String): IntermediateRepresentation = Load(variable)
 
-  def integer(value: IntegralValue): IntermediateRepresentation = Integer(value)
-
-  def float(value: FloatingPointValue): IntermediateRepresentation = Float(value)
-
-  def string(value: TextValue): IntermediateRepresentation = StringLiteral(value)
-
   def noValue: IntermediateRepresentation = NULL
 
-  def truthy: IntermediateRepresentation = TRUE
+  def truthValue: IntermediateRepresentation = TRUE
 
-  def falsy: IntermediateRepresentation = FALSE
+  def falseValue: IntermediateRepresentation = FALSE
 
-  def constantJavaValue(value: Any): IntermediateRepresentation = Constant(value)
+  def constant(value: Any): IntermediateRepresentation = Constant(value)
 
   def arrayOf(values: IntermediateRepresentation*): IntermediateRepresentation = ArrayLiteral(values.toArray)
+
+  def ternary(condition: IntermediateRepresentation,
+              onTrue: IntermediateRepresentation,
+              onFalse: IntermediateRepresentation): IntermediateRepresentation = Ternary(condition, onTrue, onFalse)
+
+  def equal(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation): IntermediateRepresentation =
+    Eq(lhs, rhs)
+
+  def notEqual(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation): IntermediateRepresentation =
+    NotEq(lhs, rhs)
+
+  def block(ops: IntermediateRepresentation*): IntermediateRepresentation = Block(ops)
+
+  def condition(test: IntermediateRepresentation)
+               (onTrue: IntermediateRepresentation): IntermediateRepresentation = Condition(test, onTrue)
+
+  def declare[TYPE](name: String)(implicit typ: ClassTag[TYPE]) = DeclareLocalVariable(typ.runtimeClass, name)
+
+  def assign(name: String, value: IntermediateRepresentation) = AssignToLocalVariable(name, value)
+
+  def tryCatch[E](name: String)(ops: IntermediateRepresentation)(onError: IntermediateRepresentation)
+                 (implicit typ: ClassTag[E]) =
+    TryCatch(ops, onError, typ.runtimeClass, name)
+
+  def fail(error: IntermediateRepresentation) = Throw(error)
+
+  def and(lhs: IntermediateRepresentation, rhs: IntermediateRepresentation) = BooleanAnd(lhs, rhs)
 }
