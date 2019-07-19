@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -95,7 +95,7 @@ public class Procedures extends LifecycleAdapter
 
     /**
      * Register a new function. This method must not be called concurrently with {@link #procedure(QualifiedName)}.
-     * @param function the fucntion.
+     * @param function the function.
      */
     public void register( CallableUserFunction function ) throws ProcedureException
     {
@@ -104,7 +104,7 @@ public class Procedures extends LifecycleAdapter
 
     /**
      * Register a new function. This method must not be called concurrently with {@link #procedure(QualifiedName)}.
-     * @param function the fucntion.
+     * @param function the function.
      */
     public void register( CallableUserAggregationFunction function ) throws ProcedureException
     {

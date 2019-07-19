@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,7 @@ package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.neo4j.cypher.internal.runtime.QueryContext
 import org.neo4j.cypher.internal.runtime.interpreted.{ExecutionContext, ListSupport}
-import org.opencypher.v9_0.util.attribution.Id
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
 import org.neo4j.values.virtual.{ListValue, NodeValue, RelationshipReference, RelationshipValue}
 
 case class ProjectEndpointsPipe(source: Pipe, relName: String,
@@ -41,14 +41,16 @@ case class ProjectEndpointsPipe(source: Pipe, relName: String,
   private def projectVarLength(qtx: QueryContext): Projector = (context: ExecutionContext) => {
     findVarLengthRelEndpoints(context, qtx) match {
       case Some((InScopeReversed(startNode, endNode), rels)) if !directed =>
-        Iterator(context.set(start, endNode, end, startNode, relName, rels.reverse()))
+        context.set(start, endNode, end, startNode, relName, rels.reverse())
+        Iterator(context)
       case Some((NotInScope(startNode, endNode), rels)) if !directed =>
         Iterator(
           executionContextFactory.copyWith(context, start, startNode, end, endNode),
           executionContextFactory.copyWith(context, start, endNode, end, startNode, relName, rels.reverse())
         )
       case Some((startAndEnd, rels)) =>
-        Iterator(context.set(start, startAndEnd.start, end, startAndEnd.end))
+        context.set(start, startAndEnd.start, end, startAndEnd.end)
+        Iterator(context)
       case None =>
         Iterator.empty
     }
@@ -57,14 +59,16 @@ case class ProjectEndpointsPipe(source: Pipe, relName: String,
   private def project(qtx: QueryContext): Projector = (context: ExecutionContext) => {
     findSimpleLengthRelEndpoints(context, qtx) match {
       case Some(InScopeReversed(startNode, endNode)) if !directed =>
-        Iterator(context.set(start, endNode, end, startNode))
+        context.set(start, endNode, end, startNode)
+        Iterator(context)
       case Some(NotInScope(startNode, endNode)) if !directed =>
         Iterator(
           executionContextFactory.copyWith(context, start, startNode, end, endNode),
           executionContextFactory.copyWith(context, start, endNode, end, startNode)
         )
       case Some(startAndEnd) =>
-        Iterator(context.set(start, startAndEnd.start, end, startAndEnd.end))
+        context.set(start, startAndEnd.start, end, startAndEnd.end)
+        Iterator(context)
       case None =>
         Iterator.empty
     }

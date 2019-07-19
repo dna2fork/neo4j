@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -18,6 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package org.neo4j.kernel.lifecycle;
+
+import org.neo4j.function.ThrowingAction;
 
 /**
  * Adapter for Lifecycle interface. Subclass and override methods as needed
@@ -42,5 +44,17 @@ public class LifecycleAdapter implements Lifecycle
     @Override
     public void shutdown() throws Throwable
     {
+    }
+
+    public static Lifecycle onShutdown( ThrowingAction action )
+    {
+        return new LifecycleAdapter()
+        {
+            @Override
+            public void shutdown() throws Exception
+            {
+                action.apply();
+            }
+        };
     }
 }

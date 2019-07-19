@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,32 +19,30 @@
  */
 package org.neo4j.kernel.impl.util.collection;
 
-import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
 import org.eclipse.collections.api.map.primitive.MutableLongObjectMap;
-import org.eclipse.collections.api.set.primitive.MutableIntSet;
 import org.eclipse.collections.api.set.primitive.MutableLongSet;
 
 import org.neo4j.kernel.impl.api.state.TxState;
 import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSetsImpl;
 import org.neo4j.memory.MemoryTracker;
+import org.neo4j.values.storable.Value;
 
 /**
  * The purpose of this factory is the ability to switch between multiple collection implementations used in {@link TxState} (e.g. on- or off-heap),
- * keeping track of underlying memory allocations. Releasing allocated memory is {@link TxState}'s responsibility.
+ * keeping track of underlying memory allocations.
  */
 public interface CollectionsFactory
 {
     MutableLongSet newLongSet();
 
-    MutableIntSet newIntSet();
-
-    <V> MutableLongObjectMap<V> newLongObjectMap();
-
-    <V> MutableIntObjectMap<V> newIntObjectMap();
-
     MutableLongDiffSetsImpl newLongDiffSets();
+
+    MutableLongObjectMap<Value> newValuesMap();
 
     MemoryTracker getMemoryTracker();
 
-    boolean collectionsMustBeReleased();
+    /**
+     * Release previously created collections. This method does not invalidate the factory.
+     */
+    void release();
 }

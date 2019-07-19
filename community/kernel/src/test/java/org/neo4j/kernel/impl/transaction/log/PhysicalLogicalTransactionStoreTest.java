@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -45,6 +45,7 @@ import org.neo4j.kernel.impl.transaction.tracing.LogAppendEvent;
 import org.neo4j.kernel.impl.util.monitoring.SilentProgressReporter;
 import org.neo4j.kernel.internal.DatabaseHealth;
 import org.neo4j.kernel.lifecycle.LifeSupport;
+import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.kernel.recovery.CorruptedLogsTruncator;
 import org.neo4j.kernel.recovery.Recovery;
@@ -74,21 +75,21 @@ public class PhysicalLogicalTransactionStoreTest
     @Rule
     public final DefaultFileSystemRule fileSystemRule = new DefaultFileSystemRule();
     @Rule
-    public TestDirectory dir = TestDirectory.testDirectory();
-    private File testDir;
+    public final TestDirectory dir = TestDirectory.testDirectory();
+    private File databaseDirectory;
     private Monitors monitors = new Monitors();
 
     @Before
     public void setup()
     {
-        testDir = dir.graphDbDir();
+        databaseDirectory = dir.databaseDir();
     }
 
     @Test
     public void extractTransactionFromLogFilesSkippingLastLogFileWithoutHeader() throws IOException
     {
         TransactionIdStore transactionIdStore = new SimpleTransactionIdStore();
-        TransactionMetadataCache positionCache = new TransactionMetadataCache( 100 );
+        TransactionMetadataCache positionCache = new TransactionMetadataCache();
         final byte[] additionalHeader = new byte[]{1, 2, 5};
         final int masterId = 2;
         int authorId = 1;
@@ -96,7 +97,7 @@ public class PhysicalLogicalTransactionStoreTest
         long latestCommittedTxWhenStarted = 4545;
         long timeCommitted = timeStarted + 10;
         LifeSupport life = new LifeSupport();
-        final LogFiles logFiles = LogFilesBuilder.builder( testDir, fileSystemRule.get() )
+        final LogFiles logFiles = LogFilesBuilder.builder( dir.databaseLayout(), fileSystemRule.get() )
                                                  .withTransactionIdStore( transactionIdStore )
                                                  .withLogVersionRepository( mock( LogVersionRepository.class ) ).build();
         life.add( logFiles );
@@ -126,10 +127,10 @@ public class PhysicalLogicalTransactionStoreTest
     {
         // GIVEN
         TransactionIdStore transactionIdStore = new SimpleTransactionIdStore();
-        TransactionMetadataCache positionCache = new TransactionMetadataCache( 1000 );
+        TransactionMetadataCache positionCache = new TransactionMetadataCache();
 
         LifeSupport life = new LifeSupport();
-        final LogFiles logFiles = LogFilesBuilder.builder( testDir, fileSystemRule.get() )
+        final LogFiles logFiles = LogFilesBuilder.builder( dir.databaseLayout(), fileSystemRule.get() )
                 .withTransactionIdStore( transactionIdStore )
                 .withLogVersionRepository( mock( LogVersionRepository.class ) ).build();
         life.add( logFiles );
@@ -153,7 +154,7 @@ public class PhysicalLogicalTransactionStoreTest
     {
         // GIVEN
         TransactionIdStore transactionIdStore = new SimpleTransactionIdStore();
-        TransactionMetadataCache positionCache = new TransactionMetadataCache( 100 );
+        TransactionMetadataCache positionCache = new TransactionMetadataCache();
         final byte[] additionalHeader = new byte[]{1, 2, 5};
         final int masterId = 2;
         int authorId = 1;
@@ -161,7 +162,7 @@ public class PhysicalLogicalTransactionStoreTest
         long latestCommittedTxWhenStarted = 4545;
         long timeCommitted = timeStarted + 10;
         LifeSupport life = new LifeSupport();
-        final LogFiles logFiles = LogFilesBuilder.builder( testDir, fileSystemRule.get() )
+        final LogFiles logFiles = LogFilesBuilder.builder( dir.databaseLayout(), fileSystemRule.get() )
                 .withTransactionIdStore( transactionIdStore )
                 .withLogVersionRepository( mock( LogVersionRepository.class ) ).build();
 
@@ -188,7 +189,7 @@ public class PhysicalLogicalTransactionStoreTest
 
         life.add( new BatchingTransactionAppender( logFiles, NO_ROTATION, positionCache,
                 transactionIdStore, BYPASS, DATABASE_HEALTH ) );
-        CorruptedLogsTruncator logPruner = new CorruptedLogsTruncator( testDir, logFiles, fileSystemRule.get() );
+        CorruptedLogsTruncator logPruner = new CorruptedLogsTruncator( databaseDirectory, logFiles, fileSystemRule.get() );
         life.add( new Recovery( new RecoveryService()
         {
             @Override
@@ -221,11 +222,12 @@ public class PhysicalLogicalTransactionStoreTest
                 return txStore.getTransactionsInReverseOrder( position );
             }
 
+            @Override
             public void transactionsRecovered( CommittedTransactionRepresentation lastRecoveredTransaction,
                     LogPosition positionAfterLastRecoveredTransaction )
             {
             }
-        }, logPruner, mock( RecoveryMonitor.class ), SilentProgressReporter.INSTANCE, false ) );
+        }, logPruner, new LifecycleAdapter(), mock( RecoveryMonitor.class ), SilentProgressReporter.INSTANCE, false ) );
 
         // WHEN
         try
@@ -247,7 +249,7 @@ public class PhysicalLogicalTransactionStoreTest
     {
         // GIVEN
         TransactionIdStore transactionIdStore = new SimpleTransactionIdStore();
-        TransactionMetadataCache positionCache = new TransactionMetadataCache( 100 );
+        TransactionMetadataCache positionCache = new TransactionMetadataCache();
         final byte[] additionalHeader = new byte[]{1, 2, 5};
         final int masterId = 2;
         int  authorId = 1;
@@ -255,7 +257,7 @@ public class PhysicalLogicalTransactionStoreTest
         long latestCommittedTxWhenStarted = 4545;
         long timeCommitted = timeStarted + 10;
         LifeSupport life = new LifeSupport();
-        final LogFiles logFiles = LogFilesBuilder.builder( testDir, fileSystemRule.get() )
+        final LogFiles logFiles = LogFilesBuilder.builder( dir.databaseLayout(), fileSystemRule.get() )
                 .withTransactionIdStore( transactionIdStore )
                 .withLogVersionRepository( mock( LogVersionRepository.class ) ).build();
         life.start();
@@ -293,7 +295,7 @@ public class PhysicalLogicalTransactionStoreTest
     {
         // GIVEN
         LogFiles logFiles = mock( LogFiles.class );
-        TransactionMetadataCache cache = new TransactionMetadataCache( 10 );
+        TransactionMetadataCache cache = new TransactionMetadataCache();
 
         LifeSupport life = new LifeSupport();
 
@@ -329,7 +331,7 @@ public class PhysicalLogicalTransactionStoreTest
         when( logFiles.getLogFile() ).thenReturn( logFile );
         when( logFile.getReader( any( LogPosition.class) ) ).thenThrow( new FileNotFoundException() );
         // Which is nevertheless in the metadata cache
-        TransactionMetadataCache cache = new TransactionMetadataCache( 10 );
+        TransactionMetadataCache cache = new TransactionMetadataCache();
         cache.cacheTransactionMetadata( 10, new LogPosition( 2, 130 ), 1, 1, 100, System.currentTimeMillis() );
 
         LifeSupport life = new LifeSupport();

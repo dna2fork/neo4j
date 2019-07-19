@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,17 +20,20 @@
 package org.neo4j.cypher.internal.javacompat;
 
 import org.neo4j.cypher.internal.CommunityCompilerFactory;
+import org.neo4j.cypher.internal.CypherConfiguration;
+import org.neo4j.cypher.internal.compatibility.CypherRuntimeConfiguration;
+import org.neo4j.cypher.internal.compiler.v3_5.CypherPlannerConfiguration;
 import org.neo4j.graphdb.DependencyResolver;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.Service;
 import org.neo4j.kernel.configuration.Config;
-import org.neo4j.kernel.impl.logging.LogService;
 import org.neo4j.kernel.impl.query.QueryEngineProvider;
 import org.neo4j.kernel.impl.query.QueryExecutionEngine;
 import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.logging.internal.LogService;
 
 @Service.Implementation( QueryEngineProvider.class )
 public class CommunityCypherEngineProvider extends QueryEngineProvider
@@ -56,9 +59,12 @@ public class CommunityCypherEngineProvider extends QueryEngineProvider
         LogService logService = resolver.resolveDependency( LogService.class );
         Monitors monitors = resolver.resolveDependency( Monitors.class );
         Config config = resolver.resolveDependency( Config.class );
+        CypherConfiguration cypherConfig = CypherConfiguration.fromConfig( config );
+        CypherPlannerConfiguration plannerConfig = cypherConfig.toCypherPlannerConfiguration( config );
+        CypherRuntimeConfiguration runtimeConfig = cypherConfig.toCypherRuntimeConfiguration();
         LogProvider logProvider = logService.getInternalLogProvider();
         CommunityCompilerFactory compilerFactory =
-                new CommunityCompilerFactory( queryService, monitors, logProvider );
+                new CommunityCompilerFactory( queryService, monitors, logProvider, plannerConfig, runtimeConfig );
         deps.satisfyDependencies( compilerFactory );
         return createEngine( queryService, config, logProvider, compilerFactory );
     }

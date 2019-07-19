@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,6 +22,8 @@ package org.neo4j.consistency.checking.full;
 import java.lang.reflect.Array;
 import java.util.List;
 
+import org.neo4j.consistency.RecordType;
+import org.neo4j.consistency.checking.ByteArrayBitsManipulator;
 import org.neo4j.consistency.checking.CheckDecorator;
 import org.neo4j.consistency.checking.cache.CacheAccess;
 import org.neo4j.consistency.checking.cache.DefaultCacheAccess;
@@ -43,6 +45,7 @@ import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
 import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.StoreAccess;
 import org.neo4j.kernel.impl.store.counts.CountsTracker;
+import org.neo4j.kernel.impl.store.kvstore.DataInitializer;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
 import org.neo4j.kernel.impl.store.record.PropertyKeyTokenRecord;
@@ -51,6 +54,7 @@ import org.neo4j.logging.Log;
 
 import static org.neo4j.consistency.report.ConsistencyReporter.NO_MONITOR;
 import static org.neo4j.kernel.impl.store.record.RecordLoad.FORCE;
+import static org.neo4j.unsafe.impl.batchimport.cache.NumberArrayFactory.AUTO_WITHOUT_PAGECACHE;
 
 public class FullCheck
 {
@@ -62,15 +66,16 @@ public class FullCheck
     private final boolean checkGraph;
     private final int threads;
     private final Statistics statistics;
+    private final boolean startCountsStore;
 
     public FullCheck( Config config, ProgressMonitorFactory progressFactory,
-            Statistics statistics, int threads )
+            Statistics statistics, int threads, boolean startCountsStore )
     {
-        this( progressFactory, statistics, threads, new ConsistencyFlags( config ), config );
+        this( progressFactory, statistics, threads, new ConsistencyFlags( config ), config, startCountsStore );
     }
 
     public FullCheck( ProgressMonitorFactory progressFactory, Statistics statistics, int threads,
-                      ConsistencyFlags consistencyFlags, Config config )
+                      ConsistencyFlags consistencyFlags, Config config, boolean startCountsStore )
     {
         this.statistics = statistics;
         this.threads = threads;
@@ -80,6 +85,7 @@ public class FullCheck
         this.checkIndexes = consistencyFlags.isCheckIndexes();
         this.checkLabelScanStore = consistencyFlags.isCheckLabelScanStore();
         this.checkPropertyOwners = consistencyFlags.isCheckPropertyOwners();
+        this.startCountsStore = startCountsStore;
     }
 
     public ConsistencySummaryStatistics execute( DirectStoreAccess stores, Log log )
@@ -98,7 +104,9 @@ public class FullCheck
         CountsBuilderDecorator countsBuilder =
                 new CountsBuilderDecorator( stores.nativeStores() );
         CheckDecorator decorator = new CheckDecorator.ChainCheckDecorator( ownerCheck, countsBuilder );
-        CacheAccess cacheAccess = new DefaultCacheAccess( statistics.getCounts(), threads );
+        CacheAccess cacheAccess = new DefaultCacheAccess(
+                AUTO_WITHOUT_PAGECACHE.newByteArray( stores.nativeStores().getNodeStore().getHighId(), new byte[ByteArrayBitsManipulator.MAX_BYTES] ),
+                statistics.getCounts(), threads );
         RecordAccess records = recordAccess( stores.nativeStores(), cacheAccess );
         execute( stores, decorator, records, report, cacheAccess, reportMonitor );
         ownerCheck.scanForOrphanChains( progressFactory );
@@ -106,19 +114,29 @@ public class FullCheck
         if ( checkGraph )
         {
             CountsAccessor countsAccessor = stores.nativeStores().getCounts();
-            if ( countsAccessor instanceof CountsTracker )
+            boolean checkCounts = true;
+            if ( startCountsStore && countsAccessor instanceof CountsTracker )
             {
                 CountsTracker tracker = (CountsTracker) countsAccessor;
+                // Perhaps other read-only use cases thinks it's fine to just rebuild an in-memory counts store,
+                // but the consistency checker should instead prevent rebuild and report that the counts store is broken or missing
+                tracker.setInitializer( new RebuildPreventingCountsInitializer() );
                 try
                 {
                     tracker.start();
                 }
                 catch ( Exception e )
                 {
-                    // let's hope it was already started :)
+                    log.error( "Counts store is missing, broken or of an older format and will not be consistency checked", e );
+                    summary.update( RecordType.COUNTS, 1, 0 );
+                    checkCounts = false;
                 }
             }
-            countsBuilder.checkCounts( countsAccessor, new ConsistencyReporter( records, report ), progressFactory );
+
+            if ( checkCounts )
+            {
+                countsBuilder.checkCounts( countsAccessor, new ConsistencyReporter( records, report ), progressFactory );
+            }
         }
 
         if ( !summary.isConsistent() )
@@ -144,7 +162,7 @@ public class FullCheck
             MultiPassStore.Factory multiPass = new MultiPassStore.Factory(
                     decorator, recordAccess, cacheAccess, report, reportMonitor );
             ConsistencyCheckTasks taskCreator = new ConsistencyCheckTasks( progress, processEverything,
-                    nativeStores, statistics, cacheAccess, directStoreAccess.labelScanStore(), indexes,
+                    nativeStores, statistics, cacheAccess, directStoreAccess.labelScanStore(), indexes, directStoreAccess.tokenHolders(),
                     multiPass, reporter, threads );
             List<ConsistencyCheckerTask> tasks =
                     taskCreator.createTasksForFullCheck( checkLabelScanStore, checkIndexes, checkGraph );
@@ -174,5 +192,20 @@ public class FullCheck
             records[i] = store.getRecord( i, store.newRecord(), FORCE );
         }
         return records;
+    }
+
+    private class RebuildPreventingCountsInitializer implements DataInitializer<CountsAccessor.Updater>
+    {
+        @Override
+        public void initialize( CountsAccessor.Updater updater )
+        {
+            throw new UnsupportedOperationException( "Counts store needed rebuild, consistency checker will instead report broken or missing counts store" );
+        }
+
+        @Override
+        public long initialVersion()
+        {
+            return 0;
+        }
     }
 }

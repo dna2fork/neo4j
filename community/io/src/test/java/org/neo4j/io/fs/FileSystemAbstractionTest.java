@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -41,7 +41,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 import org.neo4j.function.Predicates;
-import org.neo4j.graphdb.mockfs.CloseTrackingFileSystem;
 import org.neo4j.io.fs.watcher.FileWatcher;
 import org.neo4j.test.extension.Inject;
 import org.neo4j.test.extension.TestDirectoryExtension;
@@ -59,7 +58,6 @@ import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.neo4j.io.fs.FileHandle.HANDLE_DELETE;
@@ -239,22 +237,6 @@ public abstract class FileSystemAbstractionTest
         {
             assertNotNull( fileWatcher.watch( testDirectory.directory( "testDirectory" ) ) );
         }
-    }
-
-    @Test
-    void closeThirdPartyFileSystemsOnClose() throws IOException
-    {
-        CloseTrackingFileSystem closeTrackingFileSystem = new CloseTrackingFileSystem();
-
-        CloseTrackingFileSystem fileSystem = fsa.getOrCreateThirdPartyFileSystem( CloseTrackingFileSystem.class,
-                thirdPartyFileSystemClass -> closeTrackingFileSystem );
-
-        assertSame( closeTrackingFileSystem, fileSystem );
-        assertFalse( closeTrackingFileSystem.isClosed() );
-
-        fsa.close();
-
-        assertTrue( closeTrackingFileSystem.isClosed() );
     }
 
     @Test

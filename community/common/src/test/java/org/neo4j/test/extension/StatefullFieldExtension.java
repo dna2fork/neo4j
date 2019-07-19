@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -17,7 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package org.neo4j.test.extension;
 
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -52,6 +51,7 @@ public abstract class StatefullFieldExtension<T> implements TestInstancePostProc
     public void postProcessTestInstance( Object testInstance, ExtensionContext context ) throws Exception
     {
         Class<?> clazz = testInstance.getClass();
+        Object instance = createInstance( context );
         List<Field> declaredFields = getAllFields( clazz );
         for ( Field declaredField : declaredFields )
         {
@@ -59,12 +59,12 @@ public abstract class StatefullFieldExtension<T> implements TestInstancePostProc
                     getFieldType().equals( declaredField.getType() ) )
             {
                 declaredField.setAccessible( true );
-                declaredField.set( testInstance, createFieldInstance( context ) );
+                declaredField.set( testInstance, instance );
             }
         }
     }
 
-    T getStoredValue( ExtensionContext context )
+    protected T getStoredValue( ExtensionContext context )
     {
         return getLocalStore( context ).get( getFieldKey(), getFieldType() );
     }
@@ -74,7 +74,7 @@ public abstract class StatefullFieldExtension<T> implements TestInstancePostProc
         getLocalStore( context ).remove( getFieldKey(), getFieldType() );
     }
 
-    Store getStore( ExtensionContext extensionContext, Namespace namespace )
+    static Store getStore( ExtensionContext extensionContext, Namespace namespace )
     {
         return extensionContext.getRoot().getStore( namespace );
     }
@@ -84,7 +84,7 @@ public abstract class StatefullFieldExtension<T> implements TestInstancePostProc
         return getStore( extensionContext, getNameSpace() );
     }
 
-    private Object createFieldInstance( ExtensionContext extensionContext )
+    private Object createInstance( ExtensionContext extensionContext )
     {
         Store store = getLocalStore( extensionContext );
         return store.getOrComputeIfAbsent( getFieldKey(), (Function<String,Object>) s -> createField( extensionContext ) );

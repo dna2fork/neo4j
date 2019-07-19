@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,9 @@
  */
 package org.neo4j.cypher.internal.compatibility.v3_5
 
-import org.neo4j.cypher.internal.planner.v3_5.spi.{GraphStatistics, IndexDescriptor, PlanContext}
+import org.neo4j.cypher.internal.planner.v3_5.spi.{IndexDescriptor, InstrumentedGraphStatistics, PlanContext}
+import org.neo4j.cypher.internal.v3_5.frontend.phases.InternalNotificationLogger
 import org.neo4j.cypher.internal.v3_5.logical.plans.{ProcedureSignature, QualifiedName, UserFunctionSignature}
-import org.opencypher.v9_0.frontend.phases.InternalNotificationLogger
 
 class ExceptionTranslatingPlanContext(inner: PlanContext) extends PlanContext with ExceptionTranslationSupport {
 
@@ -37,7 +37,7 @@ class ExceptionTranslatingPlanContext(inner: PlanContext) extends PlanContext wi
   override def uniqueIndexesGetForLabel(labelId: Int): Iterator[IndexDescriptor] =
     translateException(inner.uniqueIndexesGetForLabel(labelId))
 
-  override def statistics: GraphStatistics =
+  override def statistics: InstrumentedGraphStatistics =
     translateException(inner.statistics)
 
   override def checkNodeIndex(idxName: String): Unit =
@@ -62,9 +62,6 @@ class ExceptionTranslatingPlanContext(inner: PlanContext) extends PlanContext wi
 
   override def checkRelIndex(idxName: String): Unit =
     translateException(inner.checkRelIndex(idxName))
-
-  override def getOrCreateFromSchemaState[T](key: Any, f: => T): T =
-    translateException(inner.getOrCreateFromSchemaState(key, f))
 
   override def getOptRelTypeId(relType: String): Option[Int] =
     translateException(inner.getOptRelTypeId(relType))

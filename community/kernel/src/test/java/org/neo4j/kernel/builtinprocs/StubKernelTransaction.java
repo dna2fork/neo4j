@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,7 @@
  */
 package org.neo4j.kernel.builtinprocs;
 
+import java.util.Map;
 import java.util.Optional;
 
 import org.neo4j.internal.kernel.api.CursorFactory;
@@ -43,8 +44,8 @@ import org.neo4j.internal.kernel.api.security.SecurityContext;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.exceptions.Status;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
 import org.neo4j.kernel.impl.api.ClockContext;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 
 public class StubKernelTransaction implements KernelTransaction
 {
@@ -60,7 +61,7 @@ public class StubKernelTransaction implements KernelTransaction
     }
 
     @Override
-    public IndexDescriptor indexUniqueCreate( SchemaDescriptor schema, Optional<String> provider )
+    public IndexDescriptor indexUniqueCreate( SchemaDescriptor schema, String provider )
     {
         throw new UnsupportedOperationException( "not implemented" );
     }
@@ -81,18 +82,6 @@ public class StubKernelTransaction implements KernelTransaction
     public Read dataRead()
     {
         throw new UnsupportedOperationException( "not implemented" );
-    }
-
-    @Override
-    public Read stableDataRead()
-    {
-        return null;
-    }
-
-    @Override
-    public void markAsStable()
-    {
-
     }
 
     @Override
@@ -288,8 +277,26 @@ public class StubKernelTransaction implements KernelTransaction
     }
 
     @Override
+    public void setMetaData( Map<String,Object> metaData )
+    {
+        throw new UnsupportedOperationException( "not implemented" );
+    }
+
+    @Override
+    public Map<String,Object> getMetaData()
+    {
+        throw new UnsupportedOperationException( "not implemented" );
+    }
+
+    @Override
     public void assertOpen()
     {
         throw new UnsupportedOperationException( "not implemented" );
+    }
+
+    @Override
+    public boolean isSchemaTransaction()
+    {
+        return false;
     }
 }

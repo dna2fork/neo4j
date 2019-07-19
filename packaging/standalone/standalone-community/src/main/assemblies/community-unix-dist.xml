@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
 
-    Copyright (c) 2002-2018 "Neo4j,"
+    Copyright (c) 2002-2019 "Neo4j,"
     Neo4j Sweden AB [http://neo4j.com]
 
     This file is part of Neo4j Enterprise Edition. The included source
@@ -103,7 +103,6 @@
       <useStrictFiltering>true</useStrictFiltering>
       <includes>
         <include>org.neo4j:*</include>
-        <include>jline:jline</include>
         <include>org.apache.lucene:lucene-core</include>
         <include>org.apache.lucene:lucene-analyzers-common</include>
         <include>org.apache.lucene:lucene-queryparser</include>
@@ -116,7 +115,6 @@
       </includes>
       <excludes>
         <exclude>*:pom:*</exclude>
-        <exclude>org.neo4j:neo4j:jar</exclude>
       </excludes>
     </dependencySet>
     <dependencySet>
@@ -128,7 +126,6 @@
       <useStrictFiltering>true</useStrictFiltering>
       <excludes>
         <exclude>org.neo4j:*</exclude>
-        <exclude>jline:jline</exclude>
         <exclude>org.apache.lucene:*</exclude>
         <exclude>org.scala-lang:*</exclude>
         <exclude>org.parboiled:*</exclude>

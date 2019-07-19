@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,10 +19,10 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport2
 import org.neo4j.cypher.internal.ir.v3_5.RegularPlannerQuery
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.v3_5.expressions._
 import org.neo4j.cypher.internal.v3_5.logical.plans._
 
 class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
@@ -31,11 +31,11 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
     val result= (new given {
       cardinality = mapCardinality {
         // node label scan
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
         // all node scan
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
         // expand
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.patternRelationships.size == 1 => 100.0
         case _                             => Double.MaxValue
       }
 
@@ -43,7 +43,7 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
 
     val expected =
       Selection(
-        Seq(Not(Equals(Variable("r1")_, Variable("r2")_)_)_),
+        Ands(Set(Not(Equals(Variable("r1")_, Variable("r2")_)_)_))_,
         NodeHashJoin(
           Set("b"),
           Expand(
@@ -68,19 +68,19 @@ class NodeHashJoinPlanningIntegrationTest extends CypherFunSuite with LogicalPla
     val result = (new given {
       cardinality = mapCardinality {
         // node label scan
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.size == 1 => 100.0
         // all node scan
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.patternNodes.size == 1 && queryGraph.selections.predicates.isEmpty => 10000.0
         case _ => Double.MaxValue
       }
     }  getLogicalPlanFor cypherQuery)._2
 
     val expected =
       Selection(
-        Seq(
+        Ands(Set(
           Not(Equals(Variable("r1") _, Variable("r2") _) _) _,
           Equals(Property(Variable("a") _, PropertyKeyName("prop") _) _, Property(Variable("c") _, PropertyKeyName("prop") _) _) _
-        ),
+        ))_,
         NodeHashJoin(
           Set("b"),
           Expand(

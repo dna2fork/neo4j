@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -349,24 +349,23 @@ public class PrimitiveLongCollections
      */
     public static long[] deduplicate( long[] values )
     {
-        int unique = 0;
-        for ( int i = 0; i < values.length; i++ )
+        if ( values.length < 2 )
         {
-            long value = values[i];
-            for ( int j = 0; j < unique; j++ )
+            return values;
+        }
+        long lastValue = values[0];
+        int uniqueIndex = 1;
+        for ( int i = 1; i < values.length; i++ )
+        {
+            long currentValue = values[i];
+            if ( currentValue != lastValue )
             {
-                if ( value == values[j] )
-                {
-                    value = -1; // signal that this value is not unique
-                    break; // we will not find more than one conflict
-                }
-            }
-            if ( value != -1 )
-            {   // this has to be done outside the inner loop, otherwise we'd never accept a single one...
-                values[unique++] = values[i];
+                values[uniqueIndex] = currentValue;
+                lastValue = currentValue;
+                uniqueIndex++;
             }
         }
-        return unique < values.length ? Arrays.copyOf( values, unique ) : values;
+        return uniqueIndex < values.length ? Arrays.copyOf( values, uniqueIndex ) : values;
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -36,20 +36,19 @@ import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexDirectoryStructure;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexProvider;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
 import org.neo4j.kernel.impl.factory.OperationalMode;
+import org.neo4j.kernel.impl.index.schema.ByteBufferFactory;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
 import org.neo4j.kernel.impl.storemigration.participant.SchemaIndexMigrator;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
-import static org.neo4j.kernel.api.schema.index.IndexDescriptor.Type.UNIQUE;
+import static org.neo4j.storageengine.api.schema.IndexDescriptor.Type.UNIQUE;
 
 public class LuceneIndexProvider extends IndexProvider
 {
-    static final int PRIORITY = 1;
-
     private final IndexStorageFactory indexStorageFactory;
     private final Config config;
     private final OperationalMode operationalMode;
@@ -60,7 +59,7 @@ public class LuceneIndexProvider extends IndexProvider
                                 IndexDirectoryStructure.Factory directoryStructureFactory, Monitor monitor, Config config,
                                 OperationalMode operationalMode )
     {
-        super( LuceneIndexProviderFactory.PROVIDER_DESCRIPTOR, PRIORITY, directoryStructureFactory );
+        super( LuceneIndexProviderFactory.PROVIDER_DESCRIPTOR, directoryStructureFactory );
         this.monitor = monitor;
         this.indexStorageFactory = buildIndexStorageFactory( fileSystem, directoryFactory );
         this.fileSystem = fileSystem;
@@ -82,7 +81,7 @@ public class LuceneIndexProvider extends IndexProvider
     }
 
     @Override
-    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig )
+    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory )
     {
         SchemaIndex luceneIndex = LuceneSchemaIndexBuilder.create( descriptor, config )
                                         .withFileSystem( fileSystem )
@@ -138,7 +137,7 @@ public class LuceneIndexProvider extends IndexProvider
     }
 
     @Override
-    public IndexCapability getCapability()
+    public IndexCapability getCapability( StoreIndexDescriptor descriptor )
     {
         return IndexCapability.NO_CAPABILITY;
     }

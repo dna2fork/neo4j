@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.function.IntSupplier;
@@ -32,13 +34,17 @@ import java.util.function.LongSupplier;
 
 import org.neo4j.graphdb.mockfs.DelegatingFileSystemAbstraction;
 import org.neo4j.graphdb.mockfs.DelegatingStoreChannel;
+import org.neo4j.io.IOUtils;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.fs.OpenMode;
 import org.neo4j.io.fs.StoreChannel;
+import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.io.pagecache.PageCacheTest;
 import org.neo4j.io.pagecache.PageCursor;
+import org.neo4j.io.pagecache.PageSwapper;
 import org.neo4j.io.pagecache.PagedFile;
 import org.neo4j.io.pagecache.tracing.ConfigurablePageCursorTracerSupplier;
+import org.neo4j.io.pagecache.tracing.DefaultPageCacheTracer;
 import org.neo4j.io.pagecache.tracing.DelegatingPageCacheTracer;
 import org.neo4j.io.pagecache.tracing.EvictionRunEvent;
 import org.neo4j.io.pagecache.tracing.MajorFlushEvent;
@@ -106,7 +112,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         RecordingPageCursorTracer cursorTracer = new RecordingPageCursorTracer();
         ConfigurablePageCursorTracerSupplier<RecordingPageCursorTracer> cursorTracerSupplier = new ConfigurablePageCursorTracerSupplier<>( cursorTracer );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, blockCacheFlush( tracer ), cursorTracerSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_READ_LOCK ) )
             {
@@ -129,7 +135,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         ConfigurablePageCursorTracerSupplier<RecordingPageCursorTracer> cursorTracerSupplier = new ConfigurablePageCursorTracerSupplier<>( cursorTracer );
 
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, blockCacheFlush( tracer ), cursorTracerSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_READ_LOCK ) )
             {
@@ -155,7 +161,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         ConfigurablePageCursorTracerSupplier<RecordingPageCursorTracer> cursorTracerSupplier = new ConfigurablePageCursorTracerSupplier<>( cursorTracer );
 
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, blockCacheFlush( tracer ), cursorTracerSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
 
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -187,7 +193,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         ConfigurablePageCursorTracerSupplier<RecordingPageCursorTracer> cursorTracerSupplier = new ConfigurablePageCursorTracerSupplier<>( cursorTracer );
 
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, blockCacheFlush( tracer ), cursorTracerSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             try ( PageCursor cursor = pagedFile.io( 1, PF_SHARED_WRITE_LOCK ) )
             {
@@ -218,7 +224,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         ConfigurablePageCursorTracerSupplier<RecordingPageCursorTracer> cursorTracerSupplier = new ConfigurablePageCursorTracerSupplier<>( cursorTracer );
 
         try ( MuninnPageCache pageCache = createPageCache( fs, 4, blockCacheFlush( tracer ), cursorTracerSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK | PF_NO_GROW ) )
             {
@@ -251,7 +257,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 0 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 7 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -276,7 +282,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 0 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 7 );
 
@@ -310,7 +316,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 0 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 1 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -347,7 +353,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 3 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initRead();
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -370,7 +376,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 3 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 7 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -396,7 +402,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 23 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 17 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -422,7 +428,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 5 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 3 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -456,7 +462,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         TestVersionContext cursorContext = new TestVersionContext( () -> 15 );
         VersionContextSupplier versionContextSupplier = new ConfiguredVersionContextSupplier( cursorContext );
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL, versionContextSupplier );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             cursorContext.initWrite( 3 );
             try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
@@ -490,7 +496,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
         writeInitialDataTo( file( "a" ) );
 
         try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL );
-                PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
         {
             Future<?> task = executor.submit( () ->
             {
@@ -555,7 +561,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
             };
 
             try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL );
-                    PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                    PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
             {
                 // The basic idea is that this loop, which will encounter a lot of page faults, must not block forever even
                 // though the eviction thread is unable to flush any dirty pages because the file system throws
@@ -608,7 +614,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
             };
 
             try ( MuninnPageCache pageCache = createPageCache( fs, 2, PageCacheTracer.NULL, PageCursorTracerSupplier.NULL );
-                    PagedFile pagedFile = pageCache.map( file( "a" ), 8 ) )
+                    PagedFile pagedFile = map( pageCache, file( "a" ), 8 ) )
             {
                 try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
                 {
@@ -650,7 +656,7 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
                 {
                     for ( ; i < Integer.MAX_VALUE; i++ )
                     {
-                        pf = pageCache.map( file, filePageSize );
+                        pf = map( pageCache, file, filePageSize );
                     }
                     fail("Failure was expected");
                 }
@@ -675,6 +681,59 @@ public class MuninnPageCacheTest extends PageCacheTest<MuninnPageCache>
                 }
             }
         } );
+    }
+
+    @Test
+    void unlimitedShouldFlushInParallel()
+    {
+        assertTimeout( ofMillis( SEMI_LONG_TIMEOUT_MILLIS ), () ->
+        {
+            List<File> mappedFiles = new ArrayList<>();
+            mappedFiles.add( existingFile( "a" ) );
+            mappedFiles.add( existingFile( "b" ) );
+            getPageCache( fs, maxPages, new FlushRendezvousTracer( mappedFiles.size() ), PageCursorTracerSupplier.NULL );
+
+            List<PagedFile> mappedPagedFiles = new ArrayList<>();
+            for ( File mappedFile : mappedFiles )
+            {
+                PagedFile pagedFile = map( pageCache, mappedFile, filePageSize );
+                mappedPagedFiles.add( pagedFile );
+                try ( PageCursor cursor = pagedFile.io( 0, PF_SHARED_WRITE_LOCK ) )
+                {
+                    assertTrue( cursor.next() );
+                    cursor.putInt( 1 );
+                }
+            }
+
+            pageCache.flushAndForce( IOLimiter.UNLIMITED );
+
+            IOUtils.closeAll( mappedPagedFiles );
+        } );
+    }
+
+    private static class FlushRendezvousTracer extends DefaultPageCacheTracer
+    {
+        private final CountDownLatch latch;
+
+        FlushRendezvousTracer( int fileCountToWaitFor )
+        {
+            latch = new CountDownLatch( fileCountToWaitFor );
+        }
+
+        @Override
+        public MajorFlushEvent beginFileFlush( PageSwapper swapper )
+        {
+            latch.countDown();
+            try
+            {
+                latch.await();
+            }
+            catch ( InterruptedException e )
+            {
+                e.printStackTrace();
+            }
+            return MajorFlushEvent.NULL;
+        }
     }
 
     private void evictAllPages( MuninnPageCache pageCache ) throws IOException

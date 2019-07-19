@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,22 +27,23 @@ import org.neo4j.internal.kernel.api.IndexCapability;
 import org.neo4j.internal.kernel.api.IndexOrder;
 import org.neo4j.internal.kernel.api.IndexValueCapability;
 import org.neo4j.internal.kernel.api.InternalIndexState;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexDirectoryStructure;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexProvider;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 import org.neo4j.values.storable.ValueCategory;
 
 public class TemporalIndexProvider extends IndexProvider
 {
     public static final String KEY = "temporal";
     static final IndexCapability CAPABILITY = new TemporalIndexCapability();
-    private static final Descriptor TEMPORAL_PROVIDER_DESCRIPTOR = new Descriptor( KEY, "1.0" );
+    private static final IndexProviderDescriptor TEMPORAL_PROVIDER_DESCRIPTOR = new IndexProviderDescriptor( KEY, "1.0" );
 
     private final PageCache pageCache;
     private final FileSystemAbstraction fs;
@@ -54,7 +55,7 @@ public class TemporalIndexProvider extends IndexProvider
                                   IndexDirectoryStructure.Factory directoryStructure, Monitor monitor,
                                   RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, boolean readOnly )
     {
-        super( TEMPORAL_PROVIDER_DESCRIPTOR, 0, directoryStructure );
+        super( TEMPORAL_PROVIDER_DESCRIPTOR, directoryStructure );
         this.pageCache = pageCache;
         this.fs = fs;
         this.monitor = monitor;
@@ -63,7 +64,7 @@ public class TemporalIndexProvider extends IndexProvider
     }
 
     @Override
-    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig )
+    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory )
     {
         if ( readOnly )
         {
@@ -89,7 +90,7 @@ public class TemporalIndexProvider extends IndexProvider
         {
             for ( TemporalIndexFiles.FileLayout subIndex : temporalIndexFiles.existing() )
             {
-                String indexFailure = NativeSchemaIndexes.readFailureMessage( pageCache, subIndex.indexFile );
+                String indexFailure = NativeIndexes.readFailureMessage( pageCache, subIndex.indexFile );
                 if ( indexFailure != null )
                 {
                     return indexFailure;
@@ -114,7 +115,7 @@ public class TemporalIndexProvider extends IndexProvider
         {
             try
             {
-                switch ( NativeSchemaIndexes.readState( pageCache, subIndex.indexFile ) )
+                switch ( NativeIndexes.readState( pageCache, subIndex.indexFile ) )
                 {
                 case FAILED:
                     return InternalIndexState.FAILED;
@@ -133,7 +134,7 @@ public class TemporalIndexProvider extends IndexProvider
     }
 
     @Override
-    public IndexCapability getCapability()
+    public IndexCapability getCapability( StoreIndexDescriptor descriptor )
     {
         return CAPABILITY;
     }
@@ -160,7 +161,7 @@ public class TemporalIndexProvider extends IndexProvider
         {
             if ( support( valueCategories ) )
             {
-                return ORDER_ASC;
+                return ORDER_BOTH;
             }
             return ORDER_NONE;
         }
@@ -177,6 +178,18 @@ public class TemporalIndexProvider extends IndexProvider
                 return IndexValueCapability.PARTIAL;
             }
             return IndexValueCapability.NO;
+        }
+
+        @Override
+        public boolean isFulltextIndex()
+        {
+            return false;
+        }
+
+        @Override
+        public boolean isEventuallyConsistent()
+        {
+            return false;
         }
 
         private boolean support( ValueCategory[] valueCategories )

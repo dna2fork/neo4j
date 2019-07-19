@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,10 +25,10 @@ import org.neo4j.kernel.api.security.PasswordPolicy;
 public class BasicPasswordPolicy implements PasswordPolicy
 {
     @Override
-    public void validatePassword( String password )
+    public void validatePassword( byte[] password )
             throws InvalidArgumentsException
     {
-        if ( password == null || password.isEmpty() )
+        if ( password == null || password.length == 0 )
         {
             throw new InvalidArgumentsException( "A password cannot be empty." );
         }

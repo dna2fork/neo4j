@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,28 +19,12 @@
  */
 package org.neo4j.test.extension;
 
-import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 
-public class DefaultFileSystemExtension extends StatefullFieldExtension<DefaultFileSystemAbstraction> implements AfterEachCallback
+public class DefaultFileSystemExtension extends FileSystemExtension<DefaultFileSystemAbstraction>
 {
-    static final String FILE_SYSTEM = "fileSystem";
-    static final Namespace FILE_SYSTEM_NAMESPACE = Namespace.create( FILE_SYSTEM );
-
-    @Override
-    public void afterEach( ExtensionContext context ) throws Exception
-    {
-        getStoredValue( context ).close();
-    }
-
-    @Override
-    protected String getFieldKey()
-    {
-        return FILE_SYSTEM;
-    }
 
     @Override
     protected Class<DefaultFileSystemAbstraction> getFieldType()
@@ -52,11 +36,5 @@ public class DefaultFileSystemExtension extends StatefullFieldExtension<DefaultF
     protected DefaultFileSystemAbstraction createField( ExtensionContext extensionContext )
     {
         return new DefaultFileSystemAbstraction();
-    }
-
-    @Override
-    protected Namespace getNameSpace()
-    {
-        return FILE_SYSTEM_NAMESPACE;
     }
 }

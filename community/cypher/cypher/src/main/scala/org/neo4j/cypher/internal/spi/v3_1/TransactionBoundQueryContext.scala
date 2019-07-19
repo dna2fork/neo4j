@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,10 +20,10 @@
 package org.neo4j.cypher.internal.spi.v3_1
 
 import java.net.URL
+import java.nio.charset.StandardCharsets.UTF_8
 import java.util.function.Predicate
 
 import org.eclipse.collections.api.iterator.LongIterator
-import org.eclipse.collections.impl.iterator.ImmutableEmptyLongIterator
 import org.neo4j.collection.RawIterator
 import org.neo4j.cypher.InternalException
 import org.neo4j.cypher.internal.compiler.v3_1.MinMaxOrdering.{BY_NUMBER, BY_STRING, BY_VALUE}
@@ -37,9 +37,9 @@ import org.neo4j.cypher.internal.compiler.v3_1.spi._
 import org.neo4j.cypher.internal.frontend.v3_1.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 import org.neo4j.cypher.internal.frontend.v3_1.{Bound, EntityNotFoundException, FailedIndexException, SemanticDirection}
 import org.neo4j.cypher.internal.javacompat.GraphDatabaseCypherService
-import org.neo4j.cypher.internal.runtime.interpreted.ResourceManager
+import org.neo4j.cypher.internal.runtime.ResourceManager
+import org.neo4j.cypher.internal.spi.CursorIterator
 import org.neo4j.cypher.internal.spi.v3_1.TransactionBoundQueryContext.IndexSearchMonitor
-import org.neo4j.cypher.internal.spi.{CursorIterator, PrimitiveCursorIterator}
 import org.neo4j.graphalgo.impl.path.ShortestPath
 import org.neo4j.graphalgo.impl.path.ShortestPath.ShortestPathPredicate
 import org.neo4j.graphdb.RelationshipType._
@@ -56,11 +56,12 @@ import org.neo4j.kernel.api._
 import org.neo4j.kernel.api.dbms.DbmsOperations
 import org.neo4j.kernel.api.exceptions.schema.{AlreadyConstrainedException, AlreadyIndexedException}
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory
 import org.neo4j.kernel.impl.core.EmbeddedProxySPI
 import org.neo4j.kernel.impl.util.ValueUtils
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable.Values
+import org.neo4j.values.storable.Values.utf8Value
 
 import scala.collection.Iterator
 import scala.collection.JavaConverters._
@@ -81,7 +82,7 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
   }
 
   //We cannot assign to value because of periodic commit
-  protected def reads(): Read = txContext.kernelTransaction.stableDataRead
+  protected def reads(): Read = txContext.kernelTransaction.dataRead()
   private def writes() = txContext.kernelTransaction.dataWrite
   private lazy val nodeCursor = allocateAndTraceNodeCursor()
   private lazy val relationshipScanCursor = allocateAndTraceRelationshipScanCursor()
@@ -108,8 +109,10 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
   override def createNode(): Node =
     entityAccessor.newNodeProxy(writes.nodeCreate())
 
-  override def createRelationship(start: Node, end: Node, relType: String) =
-    start.createRelationshipTo(end, withName(relType))
+  override def createRelationship(start: Node, end: Node, relType: String): Relationship = start match {
+    case null => throw new IllegalArgumentException("Expected to find a node, but found instead: null")
+    case _ => start.createRelationshipTo(end, withName(relType))
+  }
 
   override def createRelationship(start: Long, end: Long, relType: Int): Relationship = {
     val relId = writes.relationshipCreate(start, relType, end)
@@ -223,23 +226,13 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
 
   private def seek(index: IndexReference, query: IndexQuery*) = {
     val nodeCursor = allocateAndTraceNodeValueIndexCursor()
-    reads().nodeIndexSeek(index, nodeCursor, IndexOrder.NONE, query:_*)
+    //older planners cannot use values provided by the index
+    reads().nodeIndexSeek(index, nodeCursor, IndexOrder.NONE, false, query:_*)
     new CursorIterator[Node] {
       override protected def fetchNext(): Node = {
         if (nodeCursor.next()) entityAccessor.newNodeProxy(nodeCursor.nodeReference())
         else null
       }
-
-      override protected def close(): Unit = nodeCursor.close()
-    }
-  }
-
-  private def scan(index: IndexReference) = {
-    val nodeCursor = allocateAndTraceNodeValueIndexCursor()
-    reads().nodeIndexScan(index, nodeCursor, IndexOrder.NONE)
-    new PrimitiveCursorIterator {
-      override protected def fetchNext(): Long =
-        if (nodeCursor.next()) nodeCursor.nodeReference() else -1L
 
       override protected def close(): Unit = nodeCursor.close()
     }
@@ -294,7 +287,8 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
   }
 
   private def indexSeekByPrefixRange(index: IndexDescriptor, prefix: String): scala.Iterator[Node] =
-    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), IndexQuery.stringPrefix(index.propertyId, prefix))
+    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId),
+         IndexQuery.stringPrefix(index.propertyId, utf8Value(prefix.getBytes(UTF_8 ))))
 
   private def indexSeekByNumericalRange(index: IndexDescriptor, range: InequalitySeekRange[Number]): scala.Iterator[Node] =(range match {
     case rangeLessThan: RangeLessThan[Number] =>
@@ -351,7 +345,8 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
 
   override def indexScan(index: IndexDescriptor) = {
     val cursor = allocateAndTraceNodeValueIndexCursor()
-    reads().nodeIndexScan(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), cursor, IndexOrder.NONE)
+    //older planners cannot use values provided by the index
+    reads().nodeIndexScan(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), cursor, IndexOrder.NONE, false)
     new CursorIterator[Node] {
       override protected def fetchNext(): Node = {
         if (cursor.next()) entityAccessor.newNodeProxy(cursor.nodeReference())
@@ -362,10 +357,10 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
   }
 
   override def indexScanByContains(index: IndexDescriptor, value: String) =
-    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), IndexQuery.stringContains(index.propertyId, value))
+    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), IndexQuery.stringContains(index.propertyId, utf8Value(value.getBytes(UTF_8))))
 
   override def indexScanByEndsWith(index: IndexDescriptor, value: String) =
-    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), IndexQuery.stringSuffix(index.propertyId, value))
+    seek(txContext.kernelTransaction.schemaRead().indexReferenceUnchecked(index.labelId, index.propertyId), IndexQuery.stringSuffix(index.propertyId, utf8Value(value.getBytes(UTF_8))))
 
   override def lockingUniqueIndexSeek(index: IndexDescriptor, value: Any): Option[Node] = {
     indexSearchMonitor.lockingUniqueIndexSeek(index, value)
@@ -906,8 +901,8 @@ final class TransactionBoundQueryContext(txContext: TransactionalContextWrapper,
 
   override def callDbmsProcedure(name: QualifiedName, args: Seq[Any], allowed: Array[String]) = {
     callProcedure(name, args,
-                  txContext.dbmsOperations.procedureCallDbms(_,_,txContext.securityContext,
-                                                                        txContext.resourceTracker))
+                  txContext.dbmsOperations.procedureCallDbms(_,_,txContext.graph.getDependencyResolver, txContext.securityContext,
+        txContext.resourceTracker))
   }
 
   private def callProcedure(name: QualifiedName, args: Seq[Any], call: KernelProcedureCall) = {

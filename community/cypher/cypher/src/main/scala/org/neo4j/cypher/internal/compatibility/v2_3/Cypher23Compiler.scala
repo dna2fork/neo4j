@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -33,29 +33,29 @@ import org.neo4j.cypher.internal.compiler.v2_3.{InfoLogger, ExplainMode => Expla
 import org.neo4j.cypher.internal.frontend.v2_3.InputPosition
 import org.neo4j.cypher.internal.javacompat.ExecutionResult
 import org.neo4j.cypher.internal.runtime.interpreted.{TransactionalContextWrapper, ValueConversion}
+import org.neo4j.cypher.internal.runtime.planDescription.InternalPlanDescription
 import org.neo4j.cypher.internal.spi.v2_3.{TransactionBoundGraphStatistics, TransactionBoundPlanContext, TransactionBoundQueryContext}
 import org.neo4j.function.ThrowingBiConsumer
-import org.neo4j.graphdb.{Node, Relationship, Result}
+import org.neo4j.graphdb.{Node, Notification, Relationship, Result}
 import org.neo4j.kernel.GraphDatabaseQueryService
-import org.neo4j.kernel.api.query.{IndexUsage, PlannerInfo}
+import org.neo4j.kernel.api.query.{CompilerInfo, IndexUsage}
 import org.neo4j.kernel.impl.core.EmbeddedProxySPI
 import org.neo4j.kernel.impl.query.{QueryExecutionMonitor, TransactionalContext}
 import org.neo4j.kernel.monitoring.{Monitors => KernelMonitors}
 import org.neo4j.logging.Log
 import org.neo4j.values.AnyValue
 import org.neo4j.values.virtual.MapValue
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer
 
 import scala.collection.mutable
 
-trait Cypher23Compiler extends CachingCompiler[PreparedQuery] {
+trait Cypher23Compiler extends CachingPlanner[PreparedQuery] with Compiler {
 
   val graph: GraphDatabaseQueryService
   val queryCacheSize: Int
   val kernelMonitors: KernelMonitors
 
   override def parserCacheSize: Int = queryCacheSize
-  override def plannerCacheSize: Int = 0
 
   protected val rewriterSequencer: (String) => RewriterStepSequencer = {
     import org.neo4j.cypher.internal.compiler.v2_3.tracing.rewriters.RewriterStepSequencer._
@@ -66,15 +66,18 @@ trait Cypher23Compiler extends CachingCompiler[PreparedQuery] {
 
   protected val compiler: v2_3.CypherCompiler
 
-  implicit val executionMonitor: QueryExecutionMonitor = kernelMonitors.newMonitor(classOf[QueryExecutionMonitor])
+  private val executionMonitor: QueryExecutionMonitor = kernelMonitors.newMonitor(classOf[QueryExecutionMonitor])
 
-  class ExecutionPlanWrapper(inner: ExecutionPlan_v2_3, preParsingNotifications: Set[org.neo4j.graphdb.Notification], offSet: frontend.v2_3.InputPosition)
-    extends ExecutionPlan {
+  class Cypher23ExecutableQuery(inner: ExecutionPlan_v2_3,
+                                preParsingNotifications: Set[org.neo4j.graphdb.Notification],
+                                offSet: frontend.v2_3.InputPosition,
+                                override val paramNames: Seq[String],
+                                override val extractedParams: MapValue) extends ExecutableQuery {
 
     private def queryContext(transactionalContext: TransactionalContextWrapper): QueryContext =
       new ExceptionTranslatingQueryContext(new TransactionBoundQueryContext(transactionalContext))
 
-    def run(transactionalContext: TransactionalContext, executionMode: CypherExecutionMode, params: Map[String, Any]): ExecutionResult = {
+    private def run(transactionalContext: TransactionalContext, executionMode: CypherExecutionMode, params: Map[String, Any]): ExecutionResult = {
       val innerExecutionMode = executionMode match {
         case CypherExecutionMode.explain => ExplainModev2_3
         case CypherExecutionMode.profile => ProfileModev2_3
@@ -88,15 +91,22 @@ trait Cypher23Compiler extends CachingCompiler[PreparedQuery] {
           .run(queryContext(TransactionalContextWrapper(transactionalContext)), transactionalContext.statement, innerExecutionMode, params)
 
         new ExecutionResult(
-          new ClosingExecutionResult(
+          new CompatibilityClosingExecutionResult(
             query,
-            new ExecutionResultWrapper(innerResult, inner.plannerUsed, inner.runtimeUsed, preParsingNotifications, Some(offSet)),
-            exceptionHandler.runSafely)
+            new ExecutionResultWrapper(
+              innerResult,
+              inner.plannerUsed,
+              inner.runtimeUsed,
+              preParsingNotifications,
+              Some(offSet)
+            ),
+            exceptionHandler.runSafely
+          )(executionMonitor)
         )
       }
     }
 
-    def reusabilityState(lastCommittedTxId: () => Long, ctx: TransactionalContext): ReusabilityState = {
+    override def reusabilityState(lastCommittedTxId: () => Long, ctx: TransactionalContext): ReusabilityState = {
       val stale = inner.isStale(lastCommittedTxId, TransactionBoundGraphStatistics(ctx))
       if (stale)
         NeedsReplan(0)
@@ -104,25 +114,29 @@ trait Cypher23Compiler extends CachingCompiler[PreparedQuery] {
         FineToReuse
     }
 
-    override val plannerInfo = new PlannerInfo(inner.plannerUsed.name, inner.runtimeUsed.name, emptyList[IndexUsage])
+    override val compilerInfo = new CompilerInfo(inner.plannerUsed.name, inner.runtimeUsed.name, emptyList[IndexUsage])
 
-    override def run(transactionalContext: TransactionalContext,
-                     executionMode: CypherExecutionMode,
-                     params: MapValue): Result = {
+    override def execute(transactionalContext: TransactionalContext,
+                         preParsedQuery: PreParsedQuery,
+                         params: MapValue): Result = {
       var map: mutable.Map[String, Any] = mutable.Map[String, Any]()
       params.foreach(new ThrowingBiConsumer[String, AnyValue, RuntimeException] {
         override def accept(t: String, u: AnyValue): Unit = map.put(t, valueHelper.fromValue(u))
       })
 
-      run(transactionalContext, executionMode, map.toMap)
+      run(transactionalContext, preParsedQuery.executionMode, map.toMap)
     }
+
+    override def planDescription(): InternalPlanDescription =
+      InternalPlanDescription.error("Plan description is not available")
   }
 
   override def compile(preParsedQuery: PreParsedQuery,
                        tracer: CompilationPhaseTracer,
-                       preParsingNotifications: Set[org.neo4j.graphdb.Notification],
-                       transactionalContext: TransactionalContext
-                      ): CacheableExecutableQuery = {
+                       preParsingNotifications: Set[Notification],
+                       transactionalContext: TransactionalContext,
+                       params: MapValue
+                      ): ExecutableQuery = {
 
     exceptionHandler.runSafely {
       val notificationLogger = new RecordingNotificationLogger
@@ -138,8 +152,12 @@ trait Cypher23Compiler extends CachingCompiler[PreparedQuery] {
 
       // Log notifications/warnings from planning
       executionPlan2_3.notifications(planContext).foreach(notificationLogger += _)
-      val executionPlan = new ExecutionPlanWrapper(executionPlan2_3, preParsingNotifications, position2_3)
-      CacheableExecutableQuery(executionPlan, Seq.empty[String], ValueConversion.asValues(extractedParameters))
+      new Cypher23ExecutableQuery(
+        executionPlan2_3,
+        preParsingNotifications,
+        position2_3,
+        Seq.empty[String],
+        ValueConversion.asValues(extractedParameters))
     }
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -97,4 +97,16 @@ public interface UserRepository extends Lifecycle
      * @throws IOException
      */
     ListSnapshot<User> getPersistedSnapshot() throws IOException;
+
+    /**
+     * Permanently deletes all data in this repository
+     * @throws IOException
+     */
+    void purge() throws IOException;
+
+    /**
+     * Mark this repository as migrated to prevent accidental use.
+     * @throws IOException
+     */
+    void markAsMigrated() throws IOException;
 }

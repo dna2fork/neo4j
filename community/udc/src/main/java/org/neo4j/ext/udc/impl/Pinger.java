@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -50,11 +50,11 @@ class Pinger
 
         StringBuilder uri = new StringBuilder( "http://" + address + "/" + "?" );
 
-        for ( String key : usageDataMap.keySet() )
+        for ( Map.Entry<String,String> entry : usageDataMap.entrySet() )
         {
-            uri.append( key );
+            uri.append( entry.getKey() );
             uri.append( "=" );
-            uri.append( URLEncoder.encode( usageDataMap.get( key ), StandardCharsets.UTF_8.name() ) );
+            uri.append( URLEncoder.encode( entry.getValue(), StandardCharsets.UTF_8.name() ) );
             uri.append( "+" );
         }
 

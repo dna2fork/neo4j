@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -81,6 +81,12 @@ public interface Step<T> extends Parallelizable, AutoCloseable, Panicable
      * the case of a producer, that this step has produced all batches.
      */
     boolean isCompleted();
+
+    /**
+     * Waits for this step to become completed, i.e. until {@link #isCompleted()} returns {@code true}. If this step is already completed
+     * then this method will return immediately.
+     */
+    void awaitCompleted() throws InterruptedException;
 
     /**
      * Called by the {@link Stage} when setting up the stage. This will form a pipeline of steps,

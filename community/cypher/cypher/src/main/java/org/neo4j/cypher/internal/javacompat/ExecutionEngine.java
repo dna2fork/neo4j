@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -83,23 +83,6 @@ public class ExecutionEngine implements QueryExecutionEngine
         try
         {
             return inner.execute( query, parameters, context, false );
-        }
-        catch ( CypherException e )
-        {
-            throw new QueryExecutionKernelException( e );
-        }
-    }
-
-    @Override
-    public QueryExecution executeQuery( String query,
-                                        MapValue parameters,
-                                        TransactionalContext context,
-                                        ResultBuffer resultBuffer )
-            throws QueryExecutionKernelException
-    {
-        try
-        {
-            return inner.execute( query, parameters, context, resultBuffer );
         }
         catch ( CypherException e )
         {

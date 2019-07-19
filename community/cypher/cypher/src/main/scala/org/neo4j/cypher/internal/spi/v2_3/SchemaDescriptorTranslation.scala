@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,12 @@ package org.neo4j.cypher.internal.spi.v2_3
 
 import org.neo4j.cypher.internal.compiler.v2_3.spi.SchemaTypes
 import org.neo4j.internal.kernel.api.{IndexReference => KernelIndexReference}
-import org.neo4j.kernel.api.schema.constaints.{NodeExistenceConstraintDescriptor, RelExistenceConstraintDescriptor, UniquenessConstraintDescriptor}
+import org.neo4j.kernel.api.schema.constraints.{NodeExistenceConstraintDescriptor, RelExistenceConstraintDescriptor, UniquenessConstraintDescriptor}
 
 trait SchemaDescriptorTranslation {
   implicit def kernelToCypher(index: KernelIndexReference): SchemaTypes.IndexDescriptor =
     if (index.properties().length == 1)
-      SchemaTypes.IndexDescriptor(index.label(), index.properties()(0))
+      SchemaTypes.IndexDescriptor(index.schema().getEntityTokenIds()(0), index.schema().getPropertyIds()(0))
     else
       throw new UnsupportedOperationException("Cypher 2.3 does not support composite indexes")
 

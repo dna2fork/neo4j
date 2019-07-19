@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,10 @@ import org.neo4j.graphdb.Relationship;
 /**
  * Extends the ReadableRelationshipIndex and the Index interfaces
  * for completing the set of available types.
+ *
+ * @deprecated This API will be removed in next major release. Please consider using schema indexes instead.
  */
-public interface RelationshipIndex extends ReadableRelationshipIndex,
-        Index<Relationship>
+@Deprecated
+public interface RelationshipIndex extends ReadableRelationshipIndex, Index<Relationship>
 {
-
 }

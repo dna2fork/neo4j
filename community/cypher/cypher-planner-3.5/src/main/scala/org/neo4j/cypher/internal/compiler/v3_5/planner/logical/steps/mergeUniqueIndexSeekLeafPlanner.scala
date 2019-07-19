@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,29 +20,28 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.{LeafPlansForVariable, LogicalPlanningContext}
-import org.opencypher.v9_0.ast._
-import org.neo4j.cypher.internal.ir.v3_5.QueryGraph
+import org.neo4j.cypher.internal.ir.v3_5.{ProvidedOrder, QueryGraph, InterestingOrder}
 import org.neo4j.cypher.internal.planner.v3_5.spi.IndexDescriptor
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.{Cardinalities, Solveds}
-import org.neo4j.cypher.internal.v3_5.logical.plans.{LogicalPlan, QueryExpression}
-import org.opencypher.v9_0.expressions.{Expression, LabelToken, PropertyKeyToken}
+import org.neo4j.cypher.internal.v3_5.logical.plans._
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.expressions.{Expression, LabelToken}
 
 /*
  * Plan the following type of plan
  *
  *  - as := AssertSame
- *  - ui := NodeUniqueIndexSeek)
+ *  - ui := NodeUniqueIndexSeek
  *
  *       (as)
  *       /  \
- *    (as) (ui2)
+ *    (as) (ui3)
  *    /  \
  * (ui1) (ui2)
  */
 object mergeUniqueIndexSeekLeafPlanner extends AbstractIndexSeekLeafPlanner {
 
-  override def apply(qg: QueryGraph, context: LogicalPlanningContext, solveds: Solveds, cardinalities: Cardinalities): Seq[LogicalPlan] = {
-    val resultPlans: Set[LeafPlansForVariable] = producePlanFor(qg.selections.flatPredicates.toSet, qg, context)
+  override def apply(qg: QueryGraph, interestingOrder: InterestingOrder, context: LogicalPlanningContext): Seq[LogicalPlan] = {
+    val resultPlans: Set[LeafPlansForVariable] = producePlanFor(qg.selections.flatPredicates.toSet, qg, interestingOrder, context)
     val grouped: Map[String, Set[LeafPlansForVariable]] = resultPlans.groupBy(_.id)
 
     grouped.map {
@@ -55,14 +54,17 @@ object mergeUniqueIndexSeekLeafPlanner extends AbstractIndexSeekLeafPlanner {
   }
 
   override def constructPlan(idName: String,
-                              label: LabelToken,
-                              propertyKeys: Seq[PropertyKeyToken],
-                              valueExpr: QueryExpression[Expression],
-                              hint: Option[UsingIndexHint],
-                              argumentIds: Set[String],
+                             label: LabelToken,
+                             properties: Seq[IndexedProperty],
+                             isUnique: Boolean,
+                             valueExpr: QueryExpression[Expression],
+                             hint: Option[UsingIndexHint],
+                             argumentIds: Set[String],
+                             providedOrder: ProvidedOrder,
                              context: LogicalPlanningContext)
                             (solvedPredicates: Seq[Expression], predicatesForCardinalityEstimation: Seq[Expression]): LogicalPlan =
-      context.logicalPlanProducer.planNodeUniqueIndexSeek(idName, label, propertyKeys, valueExpr, solvedPredicates, hint, argumentIds, context)
+    context.logicalPlanProducer.planNodeUniqueIndexSeek(idName, label, properties, valueExpr, solvedPredicates, predicatesForCardinalityEstimation,
+      hint, argumentIds, providedOrder, context)
 
   override def findIndexesForLabel(labelId: Int, context: LogicalPlanningContext): Iterator[IndexDescriptor] =
     context.planContext.uniqueIndexesGetForLabel(labelId)

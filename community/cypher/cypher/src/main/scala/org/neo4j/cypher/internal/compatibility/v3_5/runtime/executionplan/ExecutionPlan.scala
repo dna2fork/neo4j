@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,31 @@
  */
 package org.neo4j.cypher.internal.compatibility.v3_5.runtime.executionplan
 
-import org.neo4j.cypher.internal.ReusabilityState
 import org.neo4j.cypher.internal.compatibility.v3_5.runtime.RuntimeName
-import org.opencypher.v9_0.frontend.PlannerName
-import org.neo4j.cypher.internal.runtime.{ExecutionMode, InternalExecutionResult, QueryContext}
-import org.neo4j.cypher.internal.v3_5.logical.plans.IndexUsage
+import org.neo4j.cypher.internal.runtime.QueryContext
+import org.neo4j.cypher.internal.runtime.planDescription.Argument
+import org.neo4j.cypher.result.RuntimeResult
 import org.neo4j.values.virtual.MapValue
+import org.neo4j.cypher.internal.v3_5.util.InternalNotification
 
 abstract class ExecutionPlan {
-  def run(queryContext: QueryContext, planType: ExecutionMode, params: MapValue): InternalExecutionResult
-  def isPeriodicCommit: Boolean
-  def plannerUsed: PlannerName
-  def reusability: ReusabilityState
-  def runtimeUsed: RuntimeName
-  def plannedIndexUsage: Seq[IndexUsage] = Seq.empty
+
+  def run(queryContext: QueryContext, doProfile: Boolean, params: MapValue): RuntimeResult
+
+  def runtimeName: RuntimeName
+
+  def metadata: Seq[Argument]
+
+  def notifications: Set[InternalNotification]
+}
+
+abstract class DelegatingExecutionPlan(inner: ExecutionPlan) extends ExecutionPlan {
+  override def run(queryContext: QueryContext, doProfile: Boolean,
+                   params: MapValue): RuntimeResult = inner.run(queryContext, doProfile, params)
+
+  override def runtimeName: RuntimeName = inner.runtimeName
+
+  override def metadata: Seq[Argument] = inner.metadata
+
+  override def notifications: Set[InternalNotification] = inner.notifications
 }

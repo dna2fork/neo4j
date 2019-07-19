@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -51,6 +51,7 @@ import org.neo4j.io.pagecache.tracing.FlushEvent;
 import org.neo4j.io.pagecache.tracing.FlushEventOpportunity;
 import org.neo4j.io.pagecache.tracing.PageFaultEvent;
 import org.neo4j.memory.GlobalMemoryTracker;
+import org.neo4j.scheduler.DaemonThreadFactory;
 import org.neo4j.unsafe.impl.internal.dragons.UnsafeUtil;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -94,6 +95,7 @@ public class PageListTest
     @AfterClass
     public static void tearDownStatics()
     {
+        mman.close();
         mman = null;
         executor.shutdown();
         executor = null;
@@ -2022,7 +2024,7 @@ public class PageListTest
         long nextStamp = pageList.tryOptimisticReadLock( nextPageRef );
         doFault( swapperId, 42 );
         pageList.unlockExclusiveAndTakeWriteLock( pageRef );
-        pageList.unlockWrite( pageRef ); // page is now modifed
+        pageList.unlockWrite( pageRef ); // page is now modified
         assertTrue( pageList.isModified( pageRef ) );
         assertTrue( pageList.tryEvict( pageRef, EvictionRunEvent.NULL ) );
         assertTrue( pageList.validateReadLock( prevPageRef, prevStamp ) );
@@ -2048,7 +2050,7 @@ public class PageListTest
         long nextStamp = pageList.tryOptimisticReadLock( nextPageRef );
         doFault( swapperId, 42 );
         pageList.unlockExclusiveAndTakeWriteLock( pageRef );
-        pageList.unlockWrite( pageRef ); // page is now modifed
+        pageList.unlockWrite( pageRef ); // page is now modified
         assertTrue( pageList.isModified( pageRef ) );
         try
         {

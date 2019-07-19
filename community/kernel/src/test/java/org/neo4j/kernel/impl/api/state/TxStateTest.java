@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,8 +22,10 @@ package org.neo4j.kernel.impl.api.state;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.eclipse.collections.api.IntIterable;
 import org.eclipse.collections.api.set.primitive.LongSet;
-import org.eclipse.collections.impl.map.mutable.primitive.LongObjectHashMap;
+import org.eclipse.collections.impl.UnmodifiableMap;
+import org.eclipse.collections.impl.factory.primitive.LongSets;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -35,59 +37,67 @@ import org.junit.runners.Parameterized;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
 
 import org.neo4j.function.Predicates;
 import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.helpers.collection.Pair;
 import org.neo4j.internal.kernel.api.exceptions.schema.ConstraintValidationException;
+import org.neo4j.internal.kernel.api.exceptions.schema.CreateConstraintFailureException;
 import org.neo4j.internal.kernel.api.schema.constraints.ConstraintDescriptor;
-import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
-import org.neo4j.kernel.api.schema.constaints.UniquenessConstraintDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
+import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
+import org.neo4j.kernel.api.schema.constraints.UniquenessConstraintDescriptor;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
+import org.neo4j.kernel.impl.util.collection.CachingOffHeapBlockAllocator;
 import org.neo4j.kernel.impl.util.collection.CollectionsFactory;
 import org.neo4j.kernel.impl.util.collection.CollectionsFactorySupplier;
+import org.neo4j.kernel.impl.util.collection.OffHeapCollectionsFactory;
+import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSets;
+import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSetsImpl;
 import org.neo4j.storageengine.api.StorageProperty;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
+import org.neo4j.storageengine.api.txstate.DiffSets;
 import org.neo4j.storageengine.api.txstate.LongDiffSets;
-import org.neo4j.storageengine.api.txstate.ReadableDiffSets;
 import org.neo4j.storageengine.api.txstate.TxStateVisitor;
 import org.neo4j.test.rule.RandomRule;
 import org.neo4j.test.rule.RepeatRule;
 import org.neo4j.values.storable.Value;
-import org.neo4j.values.storable.ValueGroup;
 import org.neo4j.values.storable.ValueTuple;
 import org.neo4j.values.storable.Values;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singleton;
-import static java.util.Collections.singletonList;
 import static org.eclipse.collections.impl.set.mutable.primitive.LongHashSet.newSetWith;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.runners.Parameterized.Parameter;
 import static org.junit.runners.Parameterized.Parameters;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.internal.verification.VerificationModeFactory.times;
 import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.helpers.collection.Pair.of;
-import static org.neo4j.values.storable.ValueGroup.TEXT;
-import static org.neo4j.values.storable.Values.NO_VALUE;
+import static org.neo4j.values.storable.Values.stringValue;
 
 @RunWith( Parameterized.class )
 public class TxStateTest
 {
+    private static final CachingOffHeapBlockAllocator BLOCK_ALLOCATOR = new CachingOffHeapBlockAllocator();
+
     public final RandomRule random = new RandomRule();
 
     @Rule
@@ -97,8 +107,8 @@ public class TxStateTest
     }
 
     private final IndexDescriptor indexOn_1_1 = TestIndexDescriptorFactory.forLabel( 1, 1 );
-    private final IndexDescriptor indexOn_1_2 = TestIndexDescriptorFactory.forLabel( 1, 2 );
     private final IndexDescriptor indexOn_2_1 = TestIndexDescriptorFactory.forLabel( 2, 1 );
+    private final IndexDescriptor indexOnRels = IndexDescriptorFactory.forSchema( SchemaDescriptorFactory.forRelType( 3, 1 ) );
 
     private CollectionsFactory collectionsFactory;
     private TxState state;
@@ -109,49 +119,52 @@ public class TxStateTest
     @Parameters( name = "{0}" )
     public static List<CollectionsFactorySupplier> data()
     {
-        return asList(
-                new CollectionsFactorySupplier()
-                {
-                    @Override
-                    public CollectionsFactory create()
-                    {
-                        return CollectionsFactorySupplier.ON_HEAP.create();
-                    }
+        return asList( new CollectionsFactorySupplier()
+        {
+            @Override
+            public CollectionsFactory create()
+            {
+                return CollectionsFactorySupplier.ON_HEAP.create();
+            }
 
-                    @Override
-                    public String toString()
-                    {
-                        return "On heap";
-                    }
-                },
-                new CollectionsFactorySupplier()
-                {
-                    @Override
-                    public CollectionsFactory create()
-                    {
-                        return CollectionsFactorySupplier.OFF_HEAP.create();
-                    }
+            @Override
+            public String toString()
+            {
+                return "On heap";
+            }
+        }, new CollectionsFactorySupplier()
+        {
+            @Override
+            public CollectionsFactory create()
+            {
+                return new OffHeapCollectionsFactory( BLOCK_ALLOCATOR );
+            }
 
-                    @Override
-                    public String toString()
-                    {
-                        return "Off heap";
-                    }
-                }
-        );
+            @Override
+            public String toString()
+            {
+                return "Off heap";
+            }
+        } );
+    }
+
+    @AfterClass
+    public static void afterAll()
+    {
+        BLOCK_ALLOCATOR.release();
     }
 
     @Before
     public void before()
     {
-        collectionsFactory = collectionsFactorySupplier.create();
+        collectionsFactory = spy( collectionsFactorySupplier.create() );
         state = new TxState( collectionsFactory );
     }
 
     @After
     public void after()
     {
-        state.release();
+        collectionsFactory.release();
         assertEquals( "Seems like native memory is leaking", 0L, collectionsFactory.getMemoryTracker().usedDirectMemory() );
     }
 
@@ -236,6 +249,93 @@ public class TxStateTest
 
     //endregion
 
+    //region index updates
+
+    @Test
+    public void shouldComputeIndexUpdatesOnUninitializedTxState()
+    {
+        // WHEN
+        UnmodifiableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getIndexUpdates( indexOn_1_1.schema() );
+
+        // THEN
+        assertNull( diffSets );
+    }
+
+    @Test
+    public void shouldComputeSortedIndexUpdatesOnUninitializedTxState()
+    {
+        // WHEN
+        NavigableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getSortedIndexUpdates( indexOn_1_1.schema() );
+
+        // THEN
+        assertNull( diffSets );
+    }
+
+    @Test
+    public void shouldComputeIndexUpdatesOnEmptyTxState()
+    {
+        // GIVEN
+        addNodesToIndex( indexOn_2_1 ).withDefaultStringProperties( 42L );
+
+        // WHEN
+        UnmodifiableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getIndexUpdates( indexOn_1_1.schema() );
+
+        // THEN
+        assertNull( diffSets );
+    }
+
+    @Test
+    public void shouldComputeSortedIndexUpdatesOnEmptyTxState()
+    {
+        // GIVEN
+        addNodesToIndex( indexOn_2_1 ).withDefaultStringProperties( 42L );
+
+        // WHEN
+        NavigableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getSortedIndexUpdates( indexOn_1_1.schema() );
+
+        // THEN
+        assertNull( diffSets );
+    }
+
+    @Test
+    public void shouldComputeIndexUpdatesOnTxStateWithAddedNodes()
+    {
+        // GIVEN
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L );
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 43L );
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 41L );
+
+        // WHEN
+        UnmodifiableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getIndexUpdates( indexOn_1_1.schema() );
+
+        // THEN
+        assertEqualDiffSets( addedNodes( 42L ), diffSets.get( ValueTuple.of( stringValue( "value42" ) ) ) );
+        assertEqualDiffSets( addedNodes( 43L ), diffSets.get( ValueTuple.of( stringValue( "value43" ) ) ) );
+        assertEqualDiffSets( addedNodes( 41L ), diffSets.get( ValueTuple.of( stringValue( "value41" ) ) ) );
+    }
+
+    @Test
+    public void shouldComputeSortedIndexUpdatesOnTxStateWithAddedNodes()
+    {
+        // GIVEN
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L );
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 43L );
+        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 41L );
+
+        // WHEN
+        NavigableMap<ValueTuple,? extends LongDiffSets> diffSets = state.getSortedIndexUpdates( indexOn_1_1.schema() );
+
+        TreeMap<ValueTuple,LongDiffSets> expected = sortedAddedNodesDiffSets( 42, 41, 43 );
+        // THEN
+        assertEquals( expected.keySet(), diffSets.keySet() );
+        for ( final ValueTuple key : expected.keySet() )
+        {
+            assertEqualDiffSets( expected.get( key ), diffSets.get( key ) );
+        }
+    }
+
+    // endregion
+
     //region index rule tests
 
     @Test
@@ -246,8 +346,18 @@ public class TxStateTest
         state.indexDoAdd( indexOn_2_1 );
 
         // THEN
-        assertEquals( asSet( indexOn_1_1 ),
-                state.indexDiffSetsByLabel( indexOn_1_1.schema().keyId() ).getAdded() );
+        assertEquals( asSet( indexOn_1_1 ), state.indexDiffSetsByLabel( indexOn_1_1.schema().keyId() ).getAdded() );
+    }
+
+    @Test
+    public void shouldAddAndGetByRelType()
+    {
+        // WHEN
+        state.indexDoAdd( indexOnRels );
+        state.indexDoAdd( indexOn_2_1 );
+
+        // THEN
+        assertEquals( asSet( indexOnRels ), state.indexDiffSetsByRelationshipType( indexOnRels.schema().keyId() ).getAdded() );
     }
 
     @Test
@@ -261,720 +371,6 @@ public class TxStateTest
     }
 
     // endregion
-
-    //region scan and seek index update tests
-
-    @Test
-    public void shouldComputeIndexUpdatesForScanOrSeekOnAnEmptyTxState()
-    {
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForScan( indexOn_1_1 );
-
-        // THEN
-        assertTrue( diffSets.isEmpty() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForScanWhenThereAreNewNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L, 43L );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForScan( indexOn_1_1 );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForSeekWhenThereAreNewNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L, 43L );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForSeek( indexOn_1_1, ValueTuple.of( "value43" ) );
-
-        // THEN
-        assertEquals( newSetWith( 43L ), diffSets.getAdded() );
-    }
-
-    //endregion
-
-    //region range seek by number index update tests
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWhenThereAreNoMatchingNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties( asList( of( 42L, 500 ), of( 43L, 550 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 44L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 660 ), false, Values.of( 800 ), true );
-
-        // THEN
-        assertEquals( 0, diffSets.getAdded().size() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWhenThereAreNewNodesCreatedInSingleBatch()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties( asList( of( 42L, 500 ), of( 43L, 550 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 44L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), true, Values.of( 600 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWhenThereAreNewNodesCreatedInTwoBatches()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties( singletonList( of( 42L, 500 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 44L, 520 ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties( singletonList( of( 43L, 550 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), true, Values.of( 600 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), true, Values.of( 550 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), true, Values.of( 550 ), false );
-
-        // THEN
-        assertEquals( newSetWith( 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), false, Values.of( 550 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 510 ), false, Values.of( 550 ), false );
-
-        // THEN
-        assertEquals( newSetWith( 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedLowerExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, NO_VALUE, false, Values.of( 550 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedLowerIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, NO_VALUE, true, Values.of( 550 ), true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedLowerExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, NO_VALUE, false, Values.of( 550 ), false );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedLowerIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, NO_VALUE, true, Values.of( 550 ), false );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedUpperIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 540 ), true, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 47L, 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedUpperIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 540 ), true, NO_VALUE, false );
-
-        // THEN
-        assertEquals( newSetWith( 47L, 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedUpperExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 540 ), false, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithUnboundedUpperExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties(
-                asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ), of( 45L, 530 ), of( 47L, 540 ), of( 48L, 550 ),
-                        of( 49L, 560 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, Values.of( 540 ), false, NO_VALUE, false );
-
-        // THEN
-        assertEquals( newSetWith( 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByNumberWithNoBounds()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withNumberProperties( asList( of( 42L, 500 ), of( 43L, 510 ), of( 44L, 520 ) ) );
-        addNodesToIndex( indexOn_1_2 ).withNumberProperties( singletonList( of( 46L, 520 ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, ValueGroup.NUMBER, NO_VALUE, true, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L ), diffSets.getAdded() );
-    }
-
-    //endregion
-
-    //region range seek by string index update tests
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWhenThereAreNoMatchingNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties( asList( of( 42L, "Agatha" ), of( 43L, "Barbara" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 44L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Cindy" ), false, Values.of( "William" ), true );
-
-        // THEN
-        assertEquals( 0, diffSets.getAdded().size() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWhenThereAreNewNodesCreatedInSingleBatch()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties( asList( of( 42L, "Agatha" ), of( 43L, "Barbara" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 44L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), true, Values.of( "Cathy" ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWhenThereAreNewNodesCreatedInTwoBatches()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties( singletonList( of( 42L, "Agatha" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 44L, "Andreas" ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties( singletonList( of( 43L, "Barbara" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), true, Values.of( "Cathy" ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), true, Values.of( "Arwen" ), true );
-
-        // THEN
-        assertEquals( newSetWith( 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), true, Values.of( "Arwen" ), false );
-
-        // THEN
-        assertEquals( newSetWith( 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), false, Values.of( "Arwen" ), true );
-
-        // THEN
-        assertEquals( newSetWith( 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Amy" ), false, Values.of( "Arwen" ), false );
-
-        // THEN
-        assertEquals( newSetWith( 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedLowerExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, NO_VALUE, false, Values.of( "Arwen" ) , true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedLowerIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, NO_VALUE, true, Values.of( "Arwen" ) , true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L, 48L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedLowerExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, NO_VALUE, false, Values.of( "Arwen" ) , false );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedLowerIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, NO_VALUE, true, Values.of( "Arwen" ) , false );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L, 45L, 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedUpperIncludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Arthur" ), true, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 47L, 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedUpperIncludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Arthur" ), true, NO_VALUE, false );
-
-        // THEN
-        assertEquals( newSetWith( 47L, 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedUpperExcludeLowerAndIncludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Arthur" ), false, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithUnboundedUpperExcludeLowerAndExcludeUpper()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ), of( 45L, "Aristotle" ),
-                        of( 47L, "Arthur" ), of( 48L, "Arwen" ), of( 49L, "Ashley" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, Values.of( "Arthur" ), false, NO_VALUE, false );
-
-        // THEN
-        assertEquals( newSetWith( 48L, 49L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForBetweenRangeSeekByStringWithNoBounds()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withBooleanProperties( asList( of( 39L, true ), of( 38L, false ) ) );
-        addNodesToIndex( indexOn_1_1 )
-                .withStringProperties( asList( of( 42L, "Agatha" ), of( 43L, "Amy" ), of( 44L, "Andreas" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withStringProperties( singletonList( of( 46L, "Andreas" ) ) );
-
-        // WHEN
-        LongDiffSets diffSets =
-                state.indexUpdatesForRangeSeek( indexOn_1_1, TEXT, NO_VALUE, true, NO_VALUE, true );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L, 44L ), diffSets.getAdded() );
-    }
-
-    //endregion
-
-    //region range seek by prefix index update tests
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereAreNoMatchingNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L, 43L );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "eulav" );
-
-        // THEN
-        assertEquals( 0, diffSets.getAdded().size() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereAreNewNodesCreatedInOneBatch()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L, 43L );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "value" );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereArePartiallyMatchingNewNodes1()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 40L, "Aaron" ), of( 41L, "Agatha" ), of( 42L, "Andreas" ), of( 43L, "Andrea" ),
-                        of( 44L, "Aristotle" ), of( 45L, "Barbara" ), of( 46L, "Barbarella" ),
-                        of( 47L, "Cinderella" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "And" );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereArePartiallyMatchingNewNodes2()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 40L, "Aaron" ), of( 41L, "Agatha" ), of( 42L, "Andreas" ), of( 43L, "Andrea" ),
-                        of( 44L, "Aristotle" ), of( 45L, "Barbara" ), of( 46L, "Barbarella" ),
-                        of( 47L, "Cinderella" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "Bar" );
-
-        // THEN
-        assertEquals( newSetWith( 45L, 46L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereArePartiallyMatchingLeadingNewNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 40L, "Aaron" ), of( 41L, "Agatha" ), of( 42L, "Andreas" ), of( 43L, "Andrea" ),
-                        of( 44L, "Aristotle" ), of( 45L, "Barbara" ), of( 46L, "Barbarella" ),
-                        of( 47L, "Cinderella" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "Aa" );
-
-        // THEN
-        assertEquals( newSetWith( 40L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereArePartiallyMatchingTrailingNewNodes()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withStringProperties(
-                asList( of( 40L, "Aaron" ), of( 41L, "Agatha" ), of( 42L, "Andreas" ), of( 43L, "Andrea" ),
-                        of( 44L, "Aristotle" ), of( 45L, "Barbara" ), of( 46L, "Barbarella" ),
-                        of( 47L, "Cinderella" ) ) );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "Ci" );
-
-        // THEN
-        assertEquals( newSetWith( 47L ), diffSets.getAdded() );
-    }
-
-    @Test
-    public void shouldComputeIndexUpdatesForRangeSeekByPrefixWhenThereAreNewNodesCreatedInTwoBatches()
-    {
-        // GIVEN
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 42L );
-        addNodesToIndex( indexOn_1_2 ).withDefaultStringProperties( 44L );
-        addNodesToIndex( indexOn_1_1 ).withDefaultStringProperties( 43L );
-
-        // WHEN
-        LongDiffSets diffSets = state.indexUpdatesForRangeSeekByPrefix( indexOn_1_1, "value" );
-
-        // THEN
-        assertEquals( newSetWith( 42L, 43L ), diffSets.getAdded() );
-    }
-
-    //endregion
 
     //region miscellaneous
 
@@ -999,7 +395,7 @@ public class TxStateTest
         state.constraintDoAdd( constraint, 7 );
 
         // then
-        ReadableDiffSets<ConstraintDescriptor> diff = state.constraintsChangesForLabel( 1 );
+        DiffSets<ConstraintDescriptor> diff = state.constraintsChangesForLabel( 1 );
 
         assertEquals( singleton( constraint ), diff.getAdded() );
         assertTrue( diff.getRemoved().isEmpty() );
@@ -1093,13 +489,10 @@ public class TxStateTest
 
         // Then
         assertEquals( asSet( constraint1, constraint2 ), state.constraintsChangesForRelationshipType( 1 ).getAdded() );
-        assertEquals( singleton( constraint1 ),
-                state.constraintsChangesForSchema( constraint1.schema() ).getAdded() );
-        assertEquals( singleton( constraint2 ),
-                state.constraintsChangesForSchema( constraint2.schema() ).getAdded() );
+        assertEquals( singleton( constraint1 ), state.constraintsChangesForSchema( constraint1.schema() ).getAdded() );
+        assertEquals( singleton( constraint2 ), state.constraintsChangesForSchema( constraint2.schema() ).getAdded() );
         assertEquals( singleton( constraint3 ), state.constraintsChangesForRelationshipType( 3 ).getAdded() );
-        assertEquals( singleton( constraint3 ),
-                state.constraintsChangesForSchema( constraint3.schema() ).getAdded() );
+        assertEquals( singleton( constraint3 ), state.constraintsChangesForSchema( constraint3.schema() ).getAdded() );
     }
 
     @Test
@@ -1238,7 +631,7 @@ public class TxStateTest
     @Test
     public void doNotVisitNotModifiedLabelsOnModifiedNodes() throws ConstraintValidationException, CreateConstraintFailureException
     {
-        state.nodeDoAddProperty( 1, 2, Values.stringValue( "propertyValue" ) );
+        state.nodeDoAddProperty( 1, 2, stringValue( "propertyValue" ) );
         MutableBoolean propertiesChecked = new MutableBoolean();
         state.accept( new TxStateVisitor.Adapter()
         {
@@ -1471,23 +864,74 @@ public class TxStateTest
         } );
     }
 
+//    getOrCreateLabelStateNodeDiffSets
+
     @Test
-    public void useCollectionFactory()
+    public void getOrCreateNodeState_props_useCollectionsFactory()
     {
-        final CollectionsFactory collectionsFactory = mock( CollectionsFactory.class );
-        doAnswer( invocation -> new LongObjectHashMap<>() ).when( collectionsFactory ).newLongObjectMap();
+        final NodeStateImpl nodeState = state.getOrCreateNodeState( 1 );
 
-        state = new TxState( collectionsFactory );
+        nodeState.addProperty( 2, stringValue( "foo" ) );
+        nodeState.removeProperty( 3 );
+        nodeState.changeProperty( 4, stringValue( "bar" ) );
 
-        state.labelDoCreateForName( "foo", 1 );
-        state.propertyKeyDoCreateForName( "bar", 2 );
-        state.relationshipTypeDoCreateForName( "baz", 3 );
-
-        verify( collectionsFactory, times( 3 ) ).newLongObjectMap();
+        verify( collectionsFactory, times( 2 ) ).newValuesMap();
+        verify( collectionsFactory, times( 1 ) ).newLongSet();
         verifyNoMoreInteractions( collectionsFactory );
     }
 
-    //endregion
+    @Test
+    public void getOrCreateGraphState_useCollectionsFactory()
+    {
+        final GraphStateImpl graphState = state.getOrCreateGraphState();
+
+        graphState.addProperty( 2, stringValue( "foo" ) );
+        graphState.removeProperty( 3 );
+        graphState.changeProperty( 4, stringValue( "bar" ) );
+
+        verify( collectionsFactory, times( 2 ) ).newValuesMap();
+        verify( collectionsFactory, times( 1 ) ).newLongSet();
+
+        verifyNoMoreInteractions( collectionsFactory );
+    }
+
+    @Test
+    public void getOrCreateLabelStateNodeDiffSets_useCollectionsFactory()
+    {
+        final MutableLongDiffSets diffSets = state.getOrCreateLabelStateNodeDiffSets(1);
+
+        diffSets.add( 1 );
+        diffSets.remove( 2 );
+
+        verify( collectionsFactory, times( 2 ) ).newLongSet();
+        verifyNoMoreInteractions( collectionsFactory );
+    }
+
+    @Test
+    public void getOrCreateIndexUpdatesForSeek_useCollectionsFactory()
+    {
+        final MutableLongDiffSets diffSets = state.getOrCreateIndexUpdatesForSeek( new HashMap<>(), ValueTuple.of( stringValue( "test" ) ) );
+        diffSets.add( 1 );
+        diffSets.remove( 2 );
+        verify( collectionsFactory, times( 2 ) ).newLongSet();
+        verifyNoMoreInteractions( collectionsFactory );
+    }
+
+    private LongDiffSets addedNodes( long... added )
+    {
+        return new MutableLongDiffSetsImpl( LongSets.mutable.of( added ), LongSets.mutable.empty(), collectionsFactory );
+    }
+
+    private TreeMap<ValueTuple,LongDiffSets> sortedAddedNodesDiffSets( long... added )
+    {
+        TreeMap<ValueTuple,LongDiffSets> map = new TreeMap<>( ValueTuple.COMPARATOR );
+        for ( long node : added )
+        {
+
+            map.put( ValueTuple.of( stringValue( "value" + node ) ), addedNodes( node ) );
+        }
+        return map;
+    }
 
     abstract class VisitationOrder extends TxStateVisitor.Adapter
     {
@@ -1557,12 +1001,6 @@ public class TxStateTest
     private interface IndexUpdater
     {
         void withDefaultStringProperties( long... nodeIds );
-
-        void withStringProperties( Collection<Pair<Long,String>> nodesWithValues );
-
-        <T extends Number> void withNumberProperties( Collection<Pair<Long,T>> nodesWithValues );
-
-        void withBooleanProperties( Collection<Pair<Long,Boolean>> nodesWithValues );
     }
 
     private IndexUpdater addNodesToIndex( final IndexDescriptor descriptor )
@@ -1577,25 +1015,7 @@ public class TxStateTest
                 {
                     entries.add( of( nodeId, "value" + nodeId ) );
                 }
-                withStringProperties( entries );
-            }
-
-            @Override
-            public void withStringProperties( Collection<Pair<Long,String>> nodesWithValues )
-            {
-                withProperties( nodesWithValues );
-            }
-
-            @Override
-            public <T extends Number> void withNumberProperties( Collection<Pair<Long,T>> nodesWithValues )
-            {
-                withProperties( nodesWithValues );
-            }
-
-            @Override
-            public void withBooleanProperties( Collection<Pair<Long,Boolean>> nodesWithValues )
-            {
-                withProperties( nodesWithValues );
+                withProperties( entries );
             }
 
             private <T> void withProperties( Collection<Pair<Long,T>> nodesWithValues )
@@ -1609,10 +1029,15 @@ public class TxStateTest
                     state.nodeDoAddLabel( labelId, nodeId );
                     Value valueAfter = Values.of( entry.other() );
                     state.nodeDoAddProperty( nodeId, propertyKeyId, valueAfter );
-                    state.indexDoUpdateEntry( descriptor.schema(), nodeId, null,
-                            ValueTuple.of( valueAfter ) );
+                    state.indexDoUpdateEntry( descriptor.schema(), nodeId, null, ValueTuple.of( valueAfter ) );
                 }
             }
         };
+    }
+
+    private static void assertEqualDiffSets( LongDiffSets expected, LongDiffSets actual )
+    {
+        assertEquals( expected.getRemoved(), actual.getRemoved() );
+        assertEquals( expected.getAdded(), actual.getAdded() );
     }
 }

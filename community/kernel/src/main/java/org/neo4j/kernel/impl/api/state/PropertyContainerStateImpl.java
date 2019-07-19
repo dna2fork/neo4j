@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,34 +20,38 @@
 package org.neo4j.kernel.impl.api.state;
 
 import org.eclipse.collections.api.IntIterable;
-import org.eclipse.collections.api.map.primitive.IntObjectMap;
-import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
-import org.eclipse.collections.api.set.primitive.MutableIntSet;
+import org.eclipse.collections.api.map.primitive.LongObjectMap;
+import org.eclipse.collections.api.map.primitive.MutableLongObjectMap;
+import org.eclipse.collections.api.set.primitive.MutableLongSet;
 import org.eclipse.collections.impl.factory.primitive.IntSets;
-import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
-import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 
 import java.util.Iterator;
 
 import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.kernel.api.properties.PropertyKeyValue;
+import org.neo4j.kernel.impl.util.collection.CollectionsFactory;
 import org.neo4j.storageengine.api.StorageProperty;
 import org.neo4j.storageengine.api.txstate.PropertyContainerState;
 import org.neo4j.values.storable.Value;
+import org.neo4j.values.storable.Values;
 
+import static java.lang.Math.toIntExact;
 import static java.util.Collections.emptyIterator;
+import static java.util.Objects.requireNonNull;
 
 class PropertyContainerStateImpl implements PropertyContainerState
 {
     private final long id;
+    private MutableLongObjectMap<Value> addedProperties;
+    private MutableLongObjectMap<Value> changedProperties;
+    private MutableLongSet removedProperties;
 
-    private MutableIntObjectMap<Value> addedProperties;
-    private MutableIntObjectMap<Value> changedProperties;
-    private MutableIntSet removedProperties;
+    protected final CollectionsFactory collectionsFactory;
 
-    PropertyContainerStateImpl( long id )
+    PropertyContainerStateImpl( long id, CollectionsFactory collectionsFactory )
     {
         this.id = id;
+        this.collectionsFactory = requireNonNull( collectionsFactory );
     }
 
     public long getId()
@@ -81,7 +85,7 @@ class PropertyContainerStateImpl implements PropertyContainerState
 
         if ( changedProperties == null )
         {
-            changedProperties = new IntObjectHashMap<>();
+            changedProperties = collectionsFactory.newValuesMap();
         }
         changedProperties.put( propertyKeyId, value );
 
@@ -102,7 +106,7 @@ class PropertyContainerStateImpl implements PropertyContainerState
         }
         if ( addedProperties == null )
         {
-            addedProperties = new IntObjectHashMap<>();
+            addedProperties = collectionsFactory.newValuesMap();
         }
         addedProperties.put( propertyKeyId, value );
     }
@@ -115,7 +119,7 @@ class PropertyContainerStateImpl implements PropertyContainerState
         }
         if ( removedProperties == null )
         {
-            removedProperties = new IntHashSet();
+            removedProperties = collectionsFactory.newLongSet();
         }
         removedProperties.add( propertyKeyId );
         if ( changedProperties != null )
@@ -139,7 +143,7 @@ class PropertyContainerStateImpl implements PropertyContainerState
     @Override
     public IntIterable removedProperties()
     {
-        return removedProperties == null ? IntSets.immutable.empty() : removedProperties;
+        return removedProperties == null ? IntSets.immutable.empty() : removedProperties.asLazy().collectInt( Math::toIntExact );
     }
 
     @Override
@@ -163,39 +167,38 @@ class PropertyContainerStateImpl implements PropertyContainerState
     }
 
     @Override
-    public StorageProperty getChangedProperty( int propertyKeyId )
-    {
-        return changedProperties == null ? null : getPropertyOrNull( changedProperties, propertyKeyId );
-    }
-
-    @Override
-    public StorageProperty getAddedProperty( int propertyKeyId )
-    {
-        return addedProperties == null ? null : getPropertyOrNull( addedProperties, propertyKeyId );
-    }
-
-    @Override
     public boolean isPropertyChangedOrRemoved( int propertyKey )
     {
         return (removedProperties != null && removedProperties.contains( propertyKey ))
-               || (changedProperties != null && changedProperties.containsKey( propertyKey ));
+                || (changedProperties != null && changedProperties.containsKey( propertyKey ));
     }
 
     @Override
-    public boolean isPropertyRemoved( int propertyKeyId )
+    public Value propertyValue( int propertyKey )
     {
-        return removedProperties != null && removedProperties.contains( propertyKeyId );
+        if ( removedProperties != null && removedProperties.contains( propertyKey ) )
+        {
+            return Values.NO_VALUE;
+        }
+        if ( addedProperties != null )
+        {
+            Value addedValue = addedProperties.get( propertyKey );
+            if ( addedValue != null )
+            {
+                return addedValue;
+            }
+        }
+        if ( changedProperties != null )
+        {
+            return changedProperties.get( propertyKey );
+        }
+        return null;
     }
 
-    private Iterator<StorageProperty> toPropertyIterator( IntObjectMap<Value> propertyMap )
+    private Iterator<StorageProperty> toPropertyIterator( LongObjectMap<Value> propertyMap )
     {
         return propertyMap == null ? emptyIterator()
-                                   : propertyMap.keyValuesView().collect( e -> (StorageProperty) new PropertyKeyValue( e.getOne(), e.getTwo() ) ).iterator();
-    }
-
-    private PropertyKeyValue getPropertyOrNull( IntObjectMap<Value> propertyMap, int propertyKeyId )
-    {
-        Value value = propertyMap.get( propertyKeyId );
-        return value == null ? null : new PropertyKeyValue( propertyKeyId, value );
+                                   : propertyMap.keyValuesView().collect(
+                                           e -> (StorageProperty) new PropertyKeyValue( toIntExact( e.getOne() ), e.getTwo() ) ).iterator();
     }
 }

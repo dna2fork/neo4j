@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -140,4 +140,10 @@ public interface KernelTransactionHandle
      * @return transaction statistics projection
      */
     TransactionExecutionStatistic transactionStatistic();
+
+    /**
+     * @return whether or not this transaction is a schema transaction. Type of transaction is decided
+     * on first write operation, be it data or schema operation.
+     */
+    boolean isSchemaTransaction();
 }

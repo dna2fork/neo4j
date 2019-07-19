@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -139,6 +139,24 @@ final class StringWrappingStringValue extends StringValue
     public TextValue plus( TextValue other )
     {
         return new StringWrappingStringValue( value + other.stringValue() );
+    }
+
+    @Override
+    public boolean startsWith( TextValue other )
+    {
+        return value.startsWith( other.stringValue() );
+    }
+
+    @Override
+    public boolean endsWith( TextValue other )
+    {
+        return value.endsWith( other.stringValue() );
+    }
+
+    @Override
+    public boolean contains( TextValue other )
+    {
+        return value.contains( other.stringValue() );
     }
 
     @Override

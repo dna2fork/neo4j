@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,8 +20,8 @@
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
-import org.opencypher.v9_0.util.NameId
-import org.opencypher.v9_0.util.attribution.Id
+import org.neo4j.cypher.internal.v3_5.util.NameId
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
 import org.neo4j.values.storable.Values
 
 case class RelationshipCountFromCountStorePipe(ident: String, startLabel: Option[LazyLabel],
@@ -41,8 +41,9 @@ case class RelationshipCountFromCountStorePipe(ident: String, startLabel: Option
         0
     }
 
-    val baseContext = state.createOrGetInitialContext(executionContextFactory)
-    Seq(baseContext.set(ident, Values.longValue(count))).iterator
+    val baseContext = state.newExecutionContext(executionContextFactory)
+    baseContext.set(ident, Values.longValue(count))
+    Seq(baseContext).iterator
   }
 
   private def getLabelId(lazyLabel: Option[LazyLabel], state: QueryState): Option[Int] = lazyLabel match {

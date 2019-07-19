@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,14 +21,14 @@ package org.neo4j.cypher.internal.compiler.v3_5.phases
 
 import java.time.Clock
 
-import org.opencypher.v9_0.util.{CypherException, InputPosition}
+import org.neo4j.cypher.internal.v3_5.util.{CypherException, InputPosition}
 import org.neo4j.cypher.internal.compiler.v3_5._
-import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.{Metrics, QueryGraphSolver}
-import org.opencypher.v9_0.frontend.phases.{BaseContext, InternalNotificationLogger, Monitors}
-import org.opencypher.v9_0.ast.semantics.SemanticErrorDef
+import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.{ExpressionEvaluator, Metrics, MetricsFactory, QueryGraphSolver}
+import org.neo4j.cypher.internal.v3_5.frontend.phases.{BaseContext, InternalNotificationLogger, Monitors}
+import org.neo4j.cypher.internal.v3_5.ast.semantics.SemanticErrorDef
 import org.neo4j.cypher.internal.planner.v3_5.spi.PlanContext
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
-import org.opencypher.v9_0.util.attribution.IdGen
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer
+import org.neo4j.cypher.internal.v3_5.util.attribution.IdGen
 
 class PlannerContext(val exceptionCreator: (String, InputPosition) => CypherException,
                      val tracer: CompilationPhaseTracer,
@@ -46,4 +46,32 @@ class PlannerContext(val exceptionCreator: (String, InputPosition) => CypherExce
   override def errorHandler =
     (errors: Seq[SemanticErrorDef]) => errors.foreach(e => throw exceptionCreator(e.msg, e.position))
 
+}
+
+object PlannerContextCreator extends ContextCreator[PlannerContext] {
+  override def create(tracer: CompilationPhaseTracer,
+                      notificationLogger: InternalNotificationLogger,
+                      planContext: PlanContext,
+                      queryText: String,
+                      debugOptions: Set[String],
+                      offset: Option[InputPosition],
+                      monitors: Monitors,
+                      metricsFactory: MetricsFactory,
+                      queryGraphSolver: QueryGraphSolver,
+                      config: CypherPlannerConfiguration,
+                      updateStrategy: UpdateStrategy,
+                      clock: Clock,
+                      logicalPlanIdGen: IdGen,
+                      evaluator: ExpressionEvaluator
+                     ): PlannerContext = {
+    val exceptionCreator = new SyntaxExceptionCreator(queryText, offset)
+
+    val metrics: Metrics = if (planContext == null)
+      null
+    else
+      metricsFactory.newMetrics(planContext.statistics, evaluator, config)
+
+    new PlannerContext(exceptionCreator, tracer, notificationLogger, planContext,
+      monitors, metrics, config, queryGraphSolver, updateStrategy, debugOptions, clock, logicalPlanIdGen)
+  }
 }

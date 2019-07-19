@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,7 @@ package org.neo4j.cypher.internal.compatibility.v3_5.notification
 import org.neo4j.cypher.internal.compiler.v3_5.CypherPlannerConfiguration
 import org.neo4j.cypher.internal.planner.v3_5.spi.PlanContext
 import org.neo4j.cypher.internal.v3_5.logical.plans.LogicalPlan
-import org.opencypher.v9_0.util.InternalNotification
+import org.neo4j.cypher.internal.v3_5.util.InternalNotification
 
 trait NotificationChecker {
   def apply(plan: LogicalPlan): TraversableOnce[InternalNotification]

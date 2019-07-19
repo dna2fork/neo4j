@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,12 +19,16 @@
  */
 package org.neo4j.kernel.configuration;
 
+import org.hamcrest.CoreMatchers;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.mockito.InOrder;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -36,9 +40,11 @@ import javax.annotation.Nonnull;
 
 import org.neo4j.configuration.DocumentedDefaultValue;
 import org.neo4j.configuration.Dynamic;
+import org.neo4j.configuration.ExternalSettings;
 import org.neo4j.configuration.Internal;
 import org.neo4j.configuration.LoadableConfig;
 import org.neo4j.configuration.ReplacedBy;
+import org.neo4j.configuration.Secret;
 import org.neo4j.graphdb.config.InvalidSettingException;
 import org.neo4j.graphdb.config.Setting;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -48,11 +54,13 @@ import org.neo4j.test.rule.TestDirectory;
 import static java.util.Collections.singletonList;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -103,6 +111,9 @@ public class ConfigTest
 
         @Deprecated
         public static final Setting<String> oldSetting = setting( "some_setting", STRING, "Has no replacement" );
+
+        @Secret
+        public static final Setting<String> password = setting( "password", STRING, "This text should not appear in logs or toString" );
     }
 
     private static class HelloHasToBeNeo4jConfigurationValidator implements ConfigurationValidator
@@ -196,8 +207,7 @@ public class ConfigTest
     }
 
     @Test
-    public void shouldWarnAndDiscardUnknownOptionsInReservedNamespaceAndPassOnBufferedLogInWithMethods()
-            throws Exception
+    public void shouldWarnAndDiscardUnknownOptionsInReservedNamespaceAndPassOnBufferedLogInWithMethods() throws Exception
     {
         // Given
         Log log = mock( Log.class );
@@ -220,8 +230,7 @@ public class ConfigTest
     }
 
     @Test
-    public void shouldLogDeprecationWarnings()
-            throws Exception
+    public void shouldLogDeprecationWarnings() throws Exception
     {
         // Given
         Log log = mock( Log.class );
@@ -246,18 +255,123 @@ public class ConfigTest
     }
 
     @Test
+    public void shouldLogIfConfigFileCouldNotBeFound()
+    {
+        Log log = mock( Log.class );
+        File confFile = testDirectory.file( "test.conf" ); // Note: we don't create the file.
+
+        Config config = Config.fromFile( confFile ).withNoThrowOnFileLoadFailure().build();
+
+        config.setLogger( log );
+
+        verify( log ).warn( "Config file [%s] does not exist.", confFile );
+    }
+
+    @Test
+    public void shouldLogIfConfigFileCouldNotBeRead() throws IOException
+    {
+        Log log = mock( Log.class );
+        File confFile = testDirectory.file( "test.conf" );
+        assertTrue( confFile.createNewFile() );
+        assumeTrue( confFile.setReadable( false ) );
+
+        Config config = Config.fromFile( confFile ).withNoThrowOnFileLoadFailure().build();
+
+        config.setLogger( log );
+
+        verify( log ).error( "Unable to load config file [%s]: %s", confFile, confFile + " (Permission denied)" );
+    }
+
+    @Test( expected = ConfigLoadIOException.class )
+    public void mustThrowIfConfigFileCouldNotBeFound()
+    {
+        File confFile = testDirectory.file( "test.conf" );
+
+        Config.fromFile( confFile ).build();
+    }
+
+    @Test( expected = ConfigLoadIOException.class )
+    public void mustThrowIfConfigFileCoutNotBeRead() throws IOException
+    {
+        File confFile = testDirectory.file( "test.conf" );
+        assertTrue( confFile.createNewFile() );
+        assumeTrue( confFile.setReadable( false ) );
+        Config.fromFile( confFile ).build();
+    }
+
+    @Test
+    public void mustWarnIfFileContainsDuplicateSettings() throws Exception
+    {
+        Log log = mock( Log.class );
+        File confFile = testDirectory.createFile( "test.conf" );
+        Files.write( confFile.toPath(), Arrays.asList(
+                ExternalSettings.initialHeapSize.name() + "=5g",
+                ExternalSettings.initialHeapSize.name() + "=4g",
+                ExternalSettings.initialHeapSize.name() + "=3g",
+                ExternalSettings.maxHeapSize.name() + "=10g",
+                ExternalSettings.maxHeapSize.name() + "=10g" ) );
+
+        Config config = Config.fromFile( confFile ).build();
+        config.setLogger( log );
+
+        // We should only log the warning once for each.
+        verify( log ).warn( "The '%s' setting is specified more than once. Settings only be specified once, to avoid ambiguity. " +
+                        "The setting value that will be used is '%s'.",
+                ExternalSettings.initialHeapSize.name(), "5g" );
+        verify( log ).warn( "The '%s' setting is specified more than once. Settings only be specified once, to avoid ambiguity. " +
+                        "The setting value that will be used is '%s'.",
+                ExternalSettings.maxHeapSize.name(), "10g" );
+    }
+
+    @Test
+    public void mustNotWarnAboutDuplicateJvmAdditionalSettings() throws Exception
+    {
+        Log log = mock( Log.class );
+        File confFile = testDirectory.createFile( "test.conf" );
+        Files.write( confFile.toPath(), Arrays.asList(
+                ExternalSettings.additionalJvm.name() + "=-Dsysprop=val",
+                ExternalSettings.additionalJvm.name() + "=-XX:+UseG1GC",
+                ExternalSettings.additionalJvm.name() + "=-XX:+AlwaysPreTouch" ) );
+
+        Config config = Config.fromFile( confFile ).build();
+        config.setLogger( log );
+
+        // The ExternalSettings.additionalJvm setting is allowed to be specified more than once.
+        verifyNoMoreInteractions( log );
+    }
+
+    @Test
     public void shouldSetInternalParameter()
     {
         // Given
         Config config = Config.builder()
-                              .withSetting( MySettingsWithDefaults.secretSetting, "false" )
-                              .withSetting( MySettingsWithDefaults.hello, "ABC" )
-                              .withConfigClasses( Arrays.asList( mySettingsWithDefaults, myMigratingSettings ) )
-                              .build();
+                .withSetting( MySettingsWithDefaults.secretSetting, "false" )
+                .withSetting( MySettingsWithDefaults.hello, "ABC" )
+                .withConfigClasses( Arrays.asList( mySettingsWithDefaults, myMigratingSettings ) )
+                .build();
 
         // Then
         assertTrue( config.getConfigValues().get( MySettingsWithDefaults.secretSetting.name() ).internal() );
         assertFalse( config.getConfigValues().get( MySettingsWithDefaults.hello.name() ).internal() );
+    }
+
+    @Test
+    public void shouldSetSecretParameter()
+    {
+        // Given
+        Config config = Config.builder()
+                .withSetting( MySettingsWithDefaults.password, "this should not be visible" )
+                .withSetting( MySettingsWithDefaults.hello, "ABC" )
+                .withConfigClasses( Arrays.asList( mySettingsWithDefaults, myMigratingSettings ) )
+                .build();
+
+        // Then
+        assertTrue( config.getConfigValues().get( MySettingsWithDefaults.password.name() ).secret() );
+        assertFalse( config.getConfigValues().get( MySettingsWithDefaults.hello.name() ).secret() );
+        String configText = config.toString();
+        assertTrue( configText.contains( Secret.OBSFUCATED ) );
+        assertFalse( configText.contains( "this should not be visible" ) );
+        assertFalse( configText.contains( config.get( MySettingsWithDefaults.password ) ) );
     }
 
     @Test
@@ -367,6 +481,10 @@ public class ConfigTest
     {
         @Dynamic
         public static final Setting<Boolean> boolSetting = setting( "bool_setting", BOOLEAN, Settings.TRUE );
+
+        @Dynamic
+        @Secret
+        public static final Setting<String> secretSetting = setting( "password", STRING, "secret" );
     }
 
     @Test
@@ -446,5 +564,40 @@ public class ConfigTest
 
         verify( log ).error( "Failure when notifying listeners after dynamic setting change; " +
                              "new setting might not have taken effect: Boo", exception );
+    }
+
+    @Test
+    public void updateDynamicShouldWorkWithSecret() throws Exception
+    {
+        // Given a secret dynamic setting with a registered update listener
+        String settingName = MyDynamicSettings.secretSetting.name();
+        String changedMessage = "Setting changed: '%s' changed from '%s' to '%s' via '%s'";
+        Config config = Config.builder().withConfigClasses( singletonList( new MyDynamicSettings() ) ).build();
+
+        Log log = mock( Log.class );
+        config.setLogger( log );
+
+        AtomicInteger counter = new AtomicInteger( 0 );
+        config.registerDynamicUpdateListener( MyDynamicSettings.secretSetting, ( previous, update ) ->
+        {
+            counter.getAndIncrement();
+            assertThat( "Update listener should not see obsfucated secret", previous, not( CoreMatchers.equalTo( Secret.OBSFUCATED ) ) );
+            assertThat( "Update listener should not see obsfucated secret", update, not( CoreMatchers.equalTo( Secret.OBSFUCATED ) ) );
+        } );
+
+        // When changing secret settings three times
+        config.updateDynamicSetting( settingName, "another", ORIGIN );
+        config.updateDynamicSetting( settingName, "secret2", ORIGIN );
+        config.updateDynamicSetting( settingName, "", ORIGIN );
+
+        // Then we should see obsfucated log messages
+        InOrder order = inOrder( log );
+        order.verify( log ).info( changedMessage, settingName, "default (" + Secret.OBSFUCATED + ")", Secret.OBSFUCATED, ORIGIN );
+        order.verify( log ).info( changedMessage, settingName, Secret.OBSFUCATED, Secret.OBSFUCATED, ORIGIN );
+        order.verify( log ).info( changedMessage, settingName, Secret.OBSFUCATED, "default (" + Secret.OBSFUCATED + ")", ORIGIN );
+        verifyNoMoreInteractions( log );
+
+        // And see 3 calls to the update listener
+        assertThat( counter.get(), is( 3 ) );
     }
 }

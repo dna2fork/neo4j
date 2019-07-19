@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,9 @@
  */
 package org.neo4j.cypher.internal.v3_5.logical.plans
 
-import org.opencypher.v9_0.expressions.Expression
-import org.opencypher.v9_0.util.attribution.IdGen
+import org.neo4j.cypher.internal.v3_5.expressions.Expression
+import org.neo4j.cypher.internal.v3_5.expressions.Property
+import org.neo4j.cypher.internal.v3_5.util.attribution.IdGen
 
 /**
   * Aggregation is a more advanced version of Distinct, where source rows are grouped by the
@@ -43,4 +44,10 @@ case class Aggregation(source: LogicalPlan,
   val groupingKeys: Set[String] = groupingExpressions.keySet
 
   val availableSymbols: Set[String] = groupingKeys ++ aggregationExpression.keySet
+
+  /**
+    * Aggregations delete columns which are not explicitly listed in groupingExpressions or aggregationExpression.
+    * It will therefore simply remove any cached node properties.
+    */
+  override final def availableCachedNodeProperties: Map[Property, CachedNodeProperty] = Map.empty
 }

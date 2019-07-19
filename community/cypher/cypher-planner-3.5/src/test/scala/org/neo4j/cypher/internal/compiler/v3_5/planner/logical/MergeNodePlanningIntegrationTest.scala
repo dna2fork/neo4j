@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,8 +20,9 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport2
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.ir.v3_5.CreateNode
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.expressions._
 import org.neo4j.cypher.internal.v3_5.logical.plans._
 
 class MergeNodePlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
@@ -76,7 +77,7 @@ class MergeNodePlanningIntegrationTest extends CypherFunSuite with LogicalPlanni
   }
 
   test("should plan create followed by merge") {
-    val createNode = CreateNode(Argument(), aId, Seq.empty, None)
+    val createNode = Create(Argument(), nodes = List(CreateNode(aId, Seq.empty, None)), Nil)
     val allNodesScan = AllNodesScan(bId, Set.empty)
     val optional = Optional(ActiveRead(allNodesScan))
     val onCreate = MergeCreateNode(Argument(), bId, Seq.empty, None)
@@ -93,7 +94,7 @@ class MergeNodePlanningIntegrationTest extends CypherFunSuite with LogicalPlanni
     val onCreate = MergeCreateNode(Argument(), aId, Seq.empty, None)
     val mergeNode = AntiConditionalApply(optional, onCreate, Seq(aId))
     val eager = Eager(mergeNode)
-    val createNode = CreateNode(eager, bId, Seq.empty, None)
+    val createNode = Create(eager, nodes = List(CreateNode(bId, Seq.empty, None)), Nil)
     val emptyResult = EmptyResult(createNode)
 
     planFor("MERGE(a) CREATE (b)")._2 should equal(emptyResult)

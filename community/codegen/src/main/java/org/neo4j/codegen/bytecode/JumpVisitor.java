@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -214,6 +214,12 @@ class JumpVisitor implements ExpressionVisitor
 
     @Override
     public void cast( TypeReference type, Expression expression )
+    {
+        throw new IllegalArgumentException( "cast is not a boolean expression" );
+    }
+
+    @Override
+    public void instanceOf( TypeReference type, Expression expression )
     {
         throw new IllegalArgumentException( "cast is not a boolean expression" );
     }

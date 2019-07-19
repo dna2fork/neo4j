@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,8 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5
 
-import org.opencypher.v9_0.util.{CypherException, InputPosition, SyntaxException}
-import org.opencypher.v9_0.ast.semantics.SemanticErrorDef
+import org.neo4j.cypher.internal.v3_5.util.{CypherException, InputPosition, SyntaxException}
+import org.neo4j.cypher.internal.v3_5.ast.semantics.SemanticErrorDef
 
 class SyntaxExceptionCreator(queryText: String, preParserOffset: Option[InputPosition]) extends ((String, InputPosition) => CypherException) {
   override def apply(message: String, position: InputPosition): CypherException = {

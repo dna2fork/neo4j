@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,9 +20,10 @@
 package org.neo4j.dbms.archive;
 
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
-import org.apache.commons.lang3.SystemUtils;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -32,57 +33,46 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Random;
 
+import org.neo4j.test.extension.Inject;
+import org.neo4j.test.extension.TestDirectoryExtension;
 import org.neo4j.test.rule.TestDirectory;
 
-import static java.util.Arrays.asList;
 import static java.util.Collections.emptySet;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeFalse;
+import static java.util.Collections.singletonList;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.neo4j.dbms.archive.TestUtils.withPermissions;
 
-public class LoaderTest
+@ExtendWith( TestDirectoryExtension.class )
+class LoaderTest
 {
-    @Rule
-    public TestDirectory testDirectory = TestDirectory.testDirectory();
+    @Inject
+    private TestDirectory testDirectory;
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheArchiveDoesntExist() throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorMessageIfTheArchiveDoesntExist()
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.file( "the-destination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( NoSuchFileException e )
-        {
-            assertEquals( archive.toString(), e.getMessage() );
-        }
+        NoSuchFileException exception = assertThrows( NoSuchFileException.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( archive.toString(), exception.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheArchiveIsNotInGzipFormat() throws IOException
+    void shouldGiveAClearErrorMessageIfTheArchiveIsNotInGzipFormat() throws IOException
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
-        Files.write( archive, asList( "some incorrectly formatted data" ) );
+        Files.write( archive, singletonList( "some incorrectly formatted data" ) );
         Path destination = testDirectory.file( "the-destination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( IncorrectFormat e )
-        {
-            assertEquals( archive.toString(), e.getMessage() );
-        }
+        IncorrectFormat incorrectFormat = assertThrows( IncorrectFormat.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( archive.toString(), incorrectFormat.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheArchiveIsNotInTarFormat() throws IOException
+    void shouldGiveAClearErrorMessageIfTheArchiveIsNotInTarFormat() throws IOException
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         try ( GzipCompressorOutputStream compressor =
@@ -94,141 +84,90 @@ public class LoaderTest
         }
 
         Path destination = testDirectory.file( "the-destination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( IncorrectFormat e )
-        {
-            assertEquals( archive.toString(), e.getMessage() );
-        }
+
+        IncorrectFormat incorrectFormat = assertThrows( IncorrectFormat.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( archive.toString(), incorrectFormat.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorIfTheDestinationAlreadyExists() throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorIfTheDestinationAlreadyExists()
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.directory( "the-destination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( FileAlreadyExistsException e )
-        {
-            assertEquals( destination.toString(), e.getMessage() );
-        }
+        FileAlreadyExistsException exception = assertThrows( FileAlreadyExistsException.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( destination.toString(), exception.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorIfTheDestinationTxLogAlreadyExists() throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorIfTheDestinationTxLogAlreadyExists()
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.file( "the-destination" ).toPath();
         Path txLogsDestination = testDirectory.directory( "txLogsDestination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, txLogsDestination );
-            fail( "Expected an exception" );
-        }
-        catch ( FileAlreadyExistsException e )
-        {
-            assertEquals( txLogsDestination.toString(), e.getMessage() );
-        }
+
+        FileAlreadyExistsException exception =
+                assertThrows( FileAlreadyExistsException.class, () -> new Loader().load( archive, destination, txLogsDestination ) );
+        assertEquals( txLogsDestination.toString(), exception.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryDoesntExist()
-            throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryDoesntExist() throws IOException
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
-        Path destination = testDirectory.directory( "subdir/the-destination" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( NoSuchFileException e )
-        {
-            assertEquals( destination.getParent().toString(), e.getMessage() );
-        }
+        Path destination = Paths.get( testDirectory.absolutePath().getAbsolutePath(), "subdir", "the-destination" );
+        NoSuchFileException noSuchFileException = assertThrows( NoSuchFileException.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( destination.getParent().toString(), noSuchFileException.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheTxLogsParentDirectoryDoesntExist()
-            throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorMessageIfTheTxLogsParentDirectoryDoesntExist()
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.file( "destination" ).toPath();
-        Path txLogsDestination = testDirectory.directory( "subdir/txLogs" ).toPath();
-        try
-        {
-            new Loader().load( archive, destination, txLogsDestination );
-            fail( "Expected an exception" );
-        }
-        catch ( NoSuchFileException e )
-        {
-            assertEquals( txLogsDestination.getParent().toString(), e.getMessage() );
-        }
+        Path txLogsDestination = Paths.get( testDirectory.absolutePath().getAbsolutePath(), "subdir", "txLogs" );
+        NoSuchFileException noSuchFileException = assertThrows( NoSuchFileException.class, () -> new Loader().load( archive, destination, txLogsDestination ) );
+        assertEquals( txLogsDestination.getParent().toString(), noSuchFileException.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryIsAFile()
-            throws IOException, IncorrectFormat
+    void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryIsAFile()
+            throws IOException
     {
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
-        Path destination = testDirectory.directory( "subdir/the-destination" ).toPath();
+        Path destination = Paths.get( testDirectory.absolutePath().getAbsolutePath(), "subdir", "the-destination" );
         Files.write( destination.getParent(), new byte[0] );
-        try
-        {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( FileSystemException e )
-        {
-            assertEquals( destination.getParent().toString() + ": Not a directory", e.getMessage() );
-        }
+        FileSystemException exception = assertThrows( FileSystemException.class, () -> new Loader().load( archive, destination, destination ) );
+        assertEquals( destination.getParent().toString() + ": Not a directory", exception.getMessage() );
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryIsNotWritable()
-            throws IOException, IncorrectFormat
+    @DisabledOnOs( OS.WINDOWS )
+    void shouldGiveAClearErrorMessageIfTheDestinationsParentDirectoryIsNotWritable()
+            throws IOException
     {
-        assumeFalse( "We haven't found a way to reliably tests permissions on Windows", SystemUtils.IS_OS_WINDOWS );
-
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.directory( "subdir/the-destination" ).toPath();
         Files.createDirectories( destination.getParent() );
         try ( Closeable ignored = withPermissions( destination.getParent(), emptySet() ) )
         {
-            new Loader().load( archive, destination, destination );
-            fail( "Expected an exception" );
-        }
-        catch ( AccessDeniedException e )
-        {
-            assertEquals( destination.getParent().toString(), e.getMessage() );
+            AccessDeniedException exception = assertThrows( AccessDeniedException.class, () -> new Loader().load( archive, destination, destination ) );
+            assertEquals( destination.getParent().toString(), exception.getMessage() );
         }
     }
 
     @Test
-    public void shouldGiveAClearErrorMessageIfTheTxLogsParentDirectoryIsNotWritable()
-            throws IOException, IncorrectFormat
+    @DisabledOnOs( OS.WINDOWS )
+    void shouldGiveAClearErrorMessageIfTheTxLogsParentDirectoryIsNotWritable()
+            throws IOException
     {
-        assumeFalse( "We haven't found a way to reliably tests permissions on Windows", SystemUtils.IS_OS_WINDOWS );
-
         Path archive = testDirectory.file( "the-archive.dump" ).toPath();
         Path destination = testDirectory.file( "destination" ).toPath();
-        Path txLogsDrectory = testDirectory.directory( "subdir/txLogs" ).toPath();
-        Files.createDirectories( txLogsDrectory.getParent() );
-        try ( Closeable ignored = withPermissions( txLogsDrectory.getParent(), emptySet() ) )
+        Path txLogsDirectory = testDirectory.directory( "subdir/txLogs" ).toPath();
+        Files.createDirectories( txLogsDirectory.getParent() );
+        try ( Closeable ignored = withPermissions( txLogsDirectory.getParent(), emptySet() ) )
         {
-            new Loader().load( archive, destination, txLogsDrectory );
-            fail( "Expected an exception" );
-        }
-        catch ( AccessDeniedException e )
-        {
-            assertEquals( txLogsDrectory.getParent().toString(), e.getMessage() );
+            AccessDeniedException exception = assertThrows( AccessDeniedException.class, () -> new Loader().load( archive, destination, txLogsDirectory ) );
+            assertEquals( txLogsDirectory.getParent().toString(), exception.getMessage() );
         }
     }
 }

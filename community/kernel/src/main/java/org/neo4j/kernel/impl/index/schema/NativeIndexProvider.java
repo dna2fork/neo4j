@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,23 +27,26 @@ import org.neo4j.index.internal.gbptree.Layout;
 import org.neo4j.index.internal.gbptree.MetadataMismatchException;
 import org.neo4j.index.internal.gbptree.RecoveryCleanupWorkCollector;
 import org.neo4j.internal.kernel.api.InternalIndexState;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexDirectoryStructure.Factory;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexProvider;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 /**
  * Base class for native indexes on top of {@link GBPTree}.
  *
- * @param <KEY> type of {@link NativeSchemaKey}
- * @param <VALUE> type of {@link NativeSchemaValue}
+ * @param <KEY> type of {@link NativeIndexSingleValueKey}
+ * @param <VALUE> type of {@link NativeIndexValue}
+ * @param <LAYOUT> type of {@link IndexLayout}
  */
-abstract class NativeIndexProvider<KEY extends NativeSchemaKey<KEY>,VALUE extends NativeSchemaValue> extends IndexProvider
+abstract class NativeIndexProvider<KEY extends NativeIndexKey<KEY>,VALUE extends NativeIndexValue,LAYOUT extends IndexLayout<KEY,VALUE>>
+        extends IndexProvider
 {
     protected final PageCache pageCache;
     protected final FileSystemAbstraction fs;
@@ -51,10 +54,10 @@ abstract class NativeIndexProvider<KEY extends NativeSchemaKey<KEY>,VALUE extend
     protected final RecoveryCleanupWorkCollector recoveryCleanupWorkCollector;
     protected final boolean readOnly;
 
-    protected NativeIndexProvider( Descriptor descriptor, int priority, Factory directoryStructureFactory, PageCache pageCache, FileSystemAbstraction fs,
-            Monitor monitor, RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, boolean readOnly )
+    protected NativeIndexProvider( IndexProviderDescriptor descriptor, Factory directoryStructureFactory, PageCache pageCache,
+            FileSystemAbstraction fs, Monitor monitor, RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, boolean readOnly )
     {
-        super( descriptor, priority, directoryStructureFactory );
+        super( descriptor, directoryStructureFactory );
         this.pageCache = pageCache;
         this.fs = fs;
         this.monitor = monitor;
@@ -62,10 +65,18 @@ abstract class NativeIndexProvider<KEY extends NativeSchemaKey<KEY>,VALUE extend
         this.readOnly = readOnly;
     }
 
-    abstract Layout<KEY,VALUE> layout( StoreIndexDescriptor descriptor );
+    /**
+     * Instantiates the {@link Layout} which is used in the index backing this native index provider.
+     *
+     * @param descriptor the {@link StoreIndexDescriptor} for this index.
+     * @param storeFile index store file, since some layouts may depend on contents of the header.
+     * If {@code null} it means that nothing must be read from the file before or while instantiating the layout.
+     * @return the correct {@link Layout} for the index.
+     */
+    abstract LAYOUT layout( StoreIndexDescriptor descriptor, File storeFile );
 
     @Override
-    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig )
+    public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory )
     {
         if ( readOnly )
         {
@@ -73,28 +84,27 @@ abstract class NativeIndexProvider<KEY extends NativeSchemaKey<KEY>,VALUE extend
         }
 
         File storeFile = nativeIndexFileFromIndexId( descriptor.getId() );
-        return newIndexPopulator( storeFile, layout( descriptor ), descriptor, samplingConfig );
+        return newIndexPopulator( storeFile, layout( descriptor, null /*meaning don't read from this file since we're recreating it anyway*/ ), descriptor,
+                bufferFactory );
     }
 
-    protected abstract IndexPopulator newIndexPopulator( File storeFile, Layout<KEY,VALUE> layout, StoreIndexDescriptor descriptor,
-            IndexSamplingConfig samplingConfig );
+    protected abstract IndexPopulator newIndexPopulator( File storeFile, LAYOUT layout, StoreIndexDescriptor descriptor, ByteBufferFactory bufferFactory );
 
     @Override
     public IndexAccessor getOnlineAccessor( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig ) throws IOException
     {
         File storeFile = nativeIndexFileFromIndexId( descriptor.getId() );
-        return newIndexAccessor( storeFile, layout( descriptor ), descriptor, samplingConfig );
+        return newIndexAccessor( storeFile, layout( descriptor, storeFile ), descriptor );
     }
 
-    protected abstract IndexAccessor newIndexAccessor( File storeFile, Layout<KEY,VALUE> layout, StoreIndexDescriptor descriptor,
-            IndexSamplingConfig samplingConfig ) throws IOException;
+    protected abstract IndexAccessor newIndexAccessor( File storeFile, LAYOUT layout, StoreIndexDescriptor descriptor ) throws IOException;
 
     @Override
     public String getPopulationFailure( StoreIndexDescriptor descriptor ) throws IllegalStateException
     {
         try
         {
-            String failureMessage = NativeSchemaIndexes.readFailureMessage( pageCache, nativeIndexFileFromIndexId( descriptor.getId() ) );
+            String failureMessage = NativeIndexes.readFailureMessage( pageCache, nativeIndexFileFromIndexId( descriptor.getId() ) );
             if ( failureMessage == null )
             {
                 throw new IllegalStateException( "Index " + descriptor.getId() + " isn't failed" );
@@ -112,7 +122,7 @@ abstract class NativeIndexProvider<KEY extends NativeSchemaKey<KEY>,VALUE extend
     {
         try
         {
-            return NativeSchemaIndexes.readState( pageCache, nativeIndexFileFromIndexId( descriptor.getId() ) );
+            return NativeIndexes.readState( pageCache, nativeIndexFileFromIndexId( descriptor.getId() ) );
         }
         catch ( MetadataMismatchException | IOException e )
         {

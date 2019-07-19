@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -102,16 +102,9 @@ class TemporalIndexCache<T> extends IndexPartsCache<TemporalIndexCache.Offset,T>
      * @param valueGroup target value group
      * @return selected part
      */
-    T select( ValueGroup valueGroup ) throws IOException
+    T select( ValueGroup valueGroup )
     {
-        try
-        {
-            return uncheckedSelect( valueGroup );
-        }
-        catch ( UncheckedIOException e )
-        {
-            throw e.getCause();
-        }
+        return uncheckedSelect( valueGroup );
     }
 
     /**

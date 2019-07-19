@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,4 +22,9 @@ package org.neo4j.cypher.internal.compatibility.v3_5.runtime.executionplan;
 public interface Provider<T>
 {
     T get();
+
+    static <N> Provider<N> NULL()
+    {
+        return () -> null;
+    }
 }

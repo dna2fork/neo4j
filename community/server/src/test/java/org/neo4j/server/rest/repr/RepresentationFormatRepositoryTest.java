@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -95,7 +95,7 @@ public class RepresentationFormatRepositoryTest
     {
         Response response = mock( Response.class );
         final AtomicReference<StreamingOutput> ref = new AtomicReference<>();
-        final Response.ResponseBuilder responseBuilder = mockResponsBuilder( response, ref );
+        final Response.ResponseBuilder responseBuilder = mockResponseBuilder( response, ref );
         OutputFormat format = repository.outputFormat( asList( MediaType.APPLICATION_JSON_TYPE ), null,
                 streamingHeader() );
         assertNotNull( format );
@@ -107,7 +107,7 @@ public class RepresentationFormatRepositoryTest
         assertEquals( "{\"a\":\"test\"}", baos.toString() );
     }
 
-    private Response.ResponseBuilder mockResponsBuilder( Response response, final AtomicReference<StreamingOutput> ref )
+    private Response.ResponseBuilder mockResponseBuilder( Response response, final AtomicReference<StreamingOutput> ref )
     {
         final Response.ResponseBuilder responseBuilder = mock( Response.ResponseBuilder.class );
         when( responseBuilder.entity( ArgumentMatchers.isA( StreamingOutput.class ) ) ).thenAnswer(

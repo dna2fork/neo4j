@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,6 @@
  */
 package org.neo4j.kernel.impl.store;
 
-import org.eclipse.collections.api.map.primitive.LongObjectMap;
-
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -31,7 +29,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.function.ToIntFunction;
 
-import org.neo4j.cursor.Cursor;
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.collection.Pair;
 import org.neo4j.io.pagecache.PageCache;
@@ -50,7 +47,6 @@ import org.neo4j.kernel.impl.store.record.Record;
 import org.neo4j.kernel.impl.store.record.RecordLoad;
 import org.neo4j.kernel.impl.util.Bits;
 import org.neo4j.logging.LogProvider;
-import org.neo4j.storageengine.api.StorageReader;
 import org.neo4j.string.UTF8;
 import org.neo4j.values.storable.ArrayValue;
 import org.neo4j.values.storable.CoordinateReferenceSystem;
@@ -146,7 +142,7 @@ import static org.neo4j.kernel.impl.store.record.RecordLoad.NORMAL;
  *            seconds in next long block
  * </pre>
  */
-public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHeader> implements StorageReader.Properties
+public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHeader>
 {
     public static final String TYPE_DESCRIPTOR = "PropertyStore";
 
@@ -160,7 +156,8 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
     private final boolean allowStorePointsAndTemporal;
 
     public PropertyStore(
-            File fileName,
+            File file,
+            File idFile,
             Config configuration,
             IdGeneratorFactory idGeneratorFactory,
             PageCache pageCache,
@@ -171,13 +168,13 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
             RecordFormats recordFormats,
             OpenOption... openOptions )
     {
-        super( fileName, configuration, IdType.PROPERTY, idGeneratorFactory, pageCache, logProvider, TYPE_DESCRIPTOR,
+        super( file, idFile, configuration, IdType.PROPERTY, idGeneratorFactory, pageCache, logProvider, TYPE_DESCRIPTOR,
                 recordFormats.property(), NO_STORE_HEADER_FORMAT, recordFormats.storeVersion(), openOptions );
         this.stringStore = stringPropertyStore;
         this.propertyKeyTokenStore = propertyKeyTokenStore;
         this.arrayStore = arrayPropertyStore;
-        allowStorePointsAndTemporal = recordFormats.hasCapability( Capability.POINT_PROPERTIES )
-                && recordFormats.hasCapability( Capability.TEMPORAL_PROPERTIES );
+        allowStorePointsAndTemporal =
+                recordFormats.hasCapability( Capability.POINT_PROPERTIES ) && recordFormats.hasCapability( Capability.TEMPORAL_PROPERTIES );
     }
 
     @Override
@@ -271,19 +268,14 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
 
         PropertyType type = block.getType();
         RecordStore<DynamicRecord> dynamicStore = dynamicStoreForValueType( type );
-        if ( dynamicStore == null )
+        if ( dynamicStore != null )
         {
-            return;
-        }
-
-        try ( Cursor<DynamicRecord> dynamicRecords = dynamicStore.newRecordCursor( dynamicStore.newRecord() )
-                .acquire( block.getSingleValueLong(), NORMAL ) )
-        {
-            while ( dynamicRecords.next() )
+            List<DynamicRecord> dynamicRecords = dynamicStore.getRecords( block.getSingleValueLong(), NORMAL );
+            for ( DynamicRecord dynamicRecord : dynamicRecords )
             {
-                dynamicRecords.get().setType( type.intValue() );
-                block.addValueRecord( dynamicRecords.get().clone() );
+                dynamicRecord.setType( type.intValue() );
             }
+            block.setValueRecords( dynamicRecords );
         }
     }
 
@@ -302,14 +294,12 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
         return propertyBlock.getType().value( propertyBlock, this );
     }
 
-    public static void allocateStringRecords( Collection<DynamicRecord> target, byte[] chars,
-            DynamicRecordAllocator allocator )
+    private static void allocateStringRecords( Collection<DynamicRecord> target, byte[] chars, DynamicRecordAllocator allocator )
     {
         AbstractDynamicStore.allocateRecordsFromBytes( target, chars, allocator );
     }
 
-    public static void allocateArrayRecords( Collection<DynamicRecord> target, Object array,
-            DynamicRecordAllocator allocator, boolean allowStorePoints )
+    private static void allocateArrayRecords( Collection<DynamicRecord> target, Object array, DynamicRecordAllocator allocator, boolean allowStorePoints )
     {
         DynamicArrayStore.allocateRecords( target, array, allocator, allowStorePoints );
     }
@@ -348,25 +338,21 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
         }
     }
 
-    @Override
     public PageCursor openStringPageCursor( long reference )
     {
         return stringStore.openPageCursorForReading( reference );
     }
 
-    @Override
     public PageCursor openArrayPageCursor( long reference )
     {
         return arrayStore.openPageCursorForReading( reference );
     }
 
-    @Override
     public ByteBuffer loadString( long reference, ByteBuffer buffer, PageCursor page )
     {
         return readDynamic( stringStore, reference, buffer, page );
     }
 
-    @Override
     public ByteBuffer loadArray( long reference, ByteBuffer buffer, PageCursor page )
     {
         return readDynamic( arrayStore, reference, buffer, page );
@@ -660,26 +646,26 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
         return UTF8.decode( byteArray );
     }
 
-    public String getStringFor( PropertyBlock propertyBlock )
+    String getStringFor( PropertyBlock propertyBlock )
     {
         ensureHeavy( propertyBlock );
         return getStringFor( propertyBlock.getValueRecords() );
     }
 
-    public String getStringFor( Collection<DynamicRecord> dynamicRecords )
+    private String getStringFor( Collection<DynamicRecord> dynamicRecords )
     {
         Pair<byte[], byte[]> source = stringStore.readFullByteArray( dynamicRecords, PropertyType.STRING );
         // A string doesn't have a header in the data array
         return decodeString( source.other() );
     }
 
-    public Value getArrayFor( PropertyBlock propertyBlock )
+    Value getArrayFor( PropertyBlock propertyBlock )
     {
         ensureHeavy( propertyBlock );
         return getArrayFor( propertyBlock.getValueRecords() );
     }
 
-    public Value getArrayFor( Iterable<DynamicRecord> records )
+    private Value getArrayFor( Iterable<DynamicRecord> records )
     {
         return getRightArray( arrayStore.readFullByteArray( records, PropertyType.ARRAY ) );
     }
@@ -698,24 +684,6 @@ public class PropertyStore extends CommonAbstractStore<PropertyRecord,NoStoreHea
         {
             PropertyRecord propRecord = new PropertyRecord( nextProp );
             getRecord( nextProp, propRecord, RecordLoad.NORMAL );
-            toReturn.add( propRecord );
-            nextProp = propRecord.getNextProp();
-        }
-        return toReturn;
-    }
-
-    public Collection<PropertyRecord> getPropertyRecordChain( long firstRecordId,
-            LongObjectMap<PropertyRecord> propertyLookup )
-    {
-        long nextProp = firstRecordId;
-        List<PropertyRecord> toReturn = new ArrayList<>();
-        while ( nextProp != Record.NO_NEXT_PROPERTY.intValue() )
-        {
-            PropertyRecord propRecord = propertyLookup.get( nextProp );
-            if ( propRecord == null )
-            {
-                getRecord( nextProp, propRecord = newRecord(), RecordLoad.NORMAL );
-            }
             toReturn.add( propRecord );
             nextProp = propRecord.getNextProp();
         }

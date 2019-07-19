@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,25 +19,30 @@
  */
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
-import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
+import org.neo4j.cypher.internal.runtime.interpreted.commands.convert.InterpretedCommandProjection
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Expression
-import org.opencypher.v9_0.util.attribution.Id
+import org.neo4j.cypher.internal.runtime.interpreted.{CommandProjection, ExecutionContext}
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
 
-case class ProjectionPipe(source: Pipe, expressions: Map[String, Expression])
+case class ProjectionPipe(source: Pipe, projection: CommandProjection)
                          (val id: Id = Id.INVALID_ID) extends PipeWithSource(source) {
 
-  expressions.values.foreach(_.registerOwningPipe(this))
+  projection.registerOwningPipe(this)
 
-  protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState) = {
-    input.map {
-      ctx =>
-        expressions.foreach {
-          case (name, expression) =>
-            val result = expression(ctx, state)
-            ctx.put(name, result)
-        }
-
-        ctx
+  protected def internalCreateResults(input: Iterator[ExecutionContext], state: QueryState): Iterator[ExecutionContext] = {
+    if (projection.isEmpty)
+      input
+    else {
+      input.map {
+        ctx =>
+          projection.project(ctx, state)
+          ctx
+      }
     }
   }
+}
+
+object ProjectionPipe {
+  def apply(source: Pipe, projections: Map[String, Expression]): ProjectionPipe =
+    ProjectionPipe(source, InterpretedCommandProjection(projections))()
 }

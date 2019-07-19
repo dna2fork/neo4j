@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,8 @@ package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.neo4j.cypher.internal.runtime.QueryContext
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
-import org.opencypher.v9_0.util.InternalException
-import org.opencypher.v9_0.expressions.SemanticDirection
+import org.neo4j.cypher.internal.v3_5.util.InternalException
+import org.neo4j.cypher.internal.v3_5.expressions.SemanticDirection
 import org.neo4j.helpers.collection.PrefetchingIterator
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable.Values.NO_VALUE
@@ -121,10 +121,10 @@ trait CachingExpandInto {
 
   @inline
   protected def getRowNode(row: ExecutionContext, col: String): AnyValue = {
-    row.getOrElse(col, throw new InternalException(s"Expected to find a node at $col but found nothing")) match {
+    row.getOrElse(col, throw new InternalException(s"Expected to find a node at '$col' but found nothing")) match {
       case n: NodeValue => n
       case NO_VALUE    => NO_VALUE
-      case value   => throw new InternalException(s"Expected to find a node at $col but found $value instead")
+      case value   => throw new InternalException(s"Expected to find a node at '$col' but found $value instead")
     }
   }
 

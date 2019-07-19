@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,19 +21,17 @@ package org.neo4j.cypher.internal
 
 import java.time.Clock
 
-import org.neo4j.cypher.internal.compiler.v3_5.{CypherPlannerConfiguration, StatsDivergenceCalculator}
+import org.neo4j.cypher.internal.compatibility.v3_5.runtime.helpers.InternalWrapping.asKernelNotification
+import org.neo4j.cypher.internal.compiler.v3_5.{StatsDivergenceCalculator, _}
 import org.neo4j.cypher.{InvalidArgumentException, _}
-import org.neo4j.graphdb.factory.GraphDatabaseSettings
-import org.neo4j.graphdb.impl.notification.NotificationCode._
-import org.neo4j.graphdb.impl.notification.NotificationDetail.Factory.message
+import org.neo4j.graphdb.Notification
 import org.neo4j.kernel.GraphDatabaseQueryService
-import org.neo4j.kernel.configuration.Config
 import org.neo4j.kernel.impl.query.TransactionalContext
 import org.neo4j.kernel.monitoring.{Monitors => KernelMonitors}
-import org.neo4j.logging.{Log, LogProvider}
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
-import org.opencypher.v9_0.util
-import org.opencypher.v9_0.util.InputPosition
+import org.neo4j.logging.LogProvider
+import org.neo4j.values.virtual.MapValue
+import org.neo4j.cypher.internal.v3_5.frontend.phases.{CompilationPhaseTracer, RecordingNotificationLogger}
+import org.neo4j.cypher.internal.v3_5.util.{DeprecatedStartNotification, InternalNotification, SyntaxException => InternalSyntaxException}
 
 object MasterCompiler {
   val DEFAULT_QUERY_CACHE_SIZE: Int = 128
@@ -49,29 +47,8 @@ object MasterCompiler {
 /**
   * Selects the correct cypher implementation based on a pre-parsed query.
   */
-class MasterCompiler(graph: GraphDatabaseQueryService,
-                     kernelMonitors: KernelMonitors,
-                     config: CypherConfiguration,
-                     logProvider: LogProvider,
+class MasterCompiler(config: CypherConfiguration,
                      compilerLibrary: CompilerLibrary) {
-
-  import org.neo4j.cypher.internal.MasterCompiler._
-
-  private val log: Log = logProvider.getLog(getClass)
-
-  private val compilerConfig = CypherPlannerConfiguration(
-    queryCacheSize = config.queryCacheSize,
-    statsDivergenceCalculator = getStatisticsDivergenceCalculator,
-    useErrorsOverWarnings = config.useErrorsOverWarnings,
-    idpMaxTableSize = config.idpMaxTableSize,
-    idpIterationDuration = config.idpIterationDuration,
-    errorIfShortestPathFallbackUsedAtRuntime = config.errorIfShortestPathFallbackUsedAtRuntime,
-    errorIfShortestPathHasCommonNodesAtRuntime = config.errorIfShortestPathHasCommonNodesAtRuntime,
-    legacyCsvQuoteEscaping = config.legacyCsvQuoteEscaping,
-    csvBufferSize = config.csvBufferSize,
-    nonIndexedLabelWarningThreshold = getNonIndexedLabelWarningThreshold,
-    planWithMinimumCardinalityEstimates = config.planWithMinimumCardinalityEstimates
-  )
 
   /**
     * Clear all compiler caches.
@@ -92,19 +69,23 @@ class MasterCompiler(graph: GraphDatabaseQueryService,
     */
   def compile(preParsedQuery: PreParsedQuery,
               tracer: CompilationPhaseTracer,
-              transactionalContext: TransactionalContext
-             ): CacheableExecutableQuery = {
+              transactionalContext: TransactionalContext,
+              params: MapValue
+             ): ExecutableQuery = {
 
-    var notifications = Set.newBuilder[org.neo4j.graphdb.Notification]
+    val logger = new RecordingNotificationLogger(Some(preParsedQuery.offset))
+
+    def notificationsSoFar(): Set[Notification] = logger.notifications.map(asKernelNotification(None))
+
     val supportedRuntimes3_1 = Seq(CypherRuntimeOption.interpreted, CypherRuntimeOption.default)
     val inputPosition = preParsedQuery.offset
 
-    def assertSupportedRuntime(ex: util.SyntaxException, runtime: CypherRuntimeOption): Unit = {
+    def assertSupportedRuntime(ex: InternalSyntaxException, runtime: CypherRuntimeOption): Unit = {
       if (!supportedRuntimes3_1.contains(runtime)) {
         if (config.useErrorsOverWarnings) {
           throw new InvalidArgumentException("The given query is not currently supported in the selected runtime")
         } else {
-          notifications += runtimeUnsupportedNotification(ex, inputPosition)
+          logger.log(RuntimeUnsupportedNotification)
         }
       }
     }
@@ -115,34 +96,34 @@ class MasterCompiler(graph: GraphDatabaseQueryService,
       * @param preParsedQuery the query to compile
       * @return the compiled query
       */
-    def innerCompile(preParsedQuery: PreParsedQuery): CacheableExecutableQuery = {
+    def innerCompile(preParsedQuery: PreParsedQuery, params: MapValue): ExecutableQuery = {
 
-      if ((preParsedQuery.version == CypherVersion.v3_3 || preParsedQuery.version == CypherVersion.v3_5) && preParsedQuery.planner == CypherPlannerOption.rule) {
-        notifications += rulePlannerUnavailableFallbackNotification(preParsedQuery.offset)
-        innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1))
+      if ((preParsedQuery.version == CypherVersion.v3_4 || preParsedQuery.version == CypherVersion.v3_5) && preParsedQuery.planner == CypherPlannerOption.rule) {
+        logger.log(RulePlannerUnavailableFallbackNotification)
+        innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1), params)
 
       } else if (preParsedQuery.version == CypherVersion.v3_5) {
         val compiler3_5 = compilerLibrary.selectCompiler(preParsedQuery.version,
                                                          preParsedQuery.planner,
                                                          preParsedQuery.runtime,
-                                                         preParsedQuery.updateStrategy,
-                                                         compilerConfig)
+                                                         preParsedQuery.updateStrategy)
 
         try {
-          compiler3_5.compile(preParsedQuery, tracer, notifications.result(), transactionalContext)
+          compiler3_5.compile(preParsedQuery, tracer, notificationsSoFar(), transactionalContext, params)
         } catch {
           case ex: SyntaxException if ex.getMessage.startsWith("CREATE UNIQUE") =>
-            val ex3_5 = ex.getCause.asInstanceOf[util.SyntaxException]
-            notifications += createUniqueNotification(ex3_5, inputPosition)
+            val ex3_5 = ex.getCause.asInstanceOf[InternalSyntaxException]
+            logger.log(CreateUniqueUnavailableFallback(ex3_5.pos.get))
+            logger.log(CreateUniqueDeprecated(ex3_5.pos.get))
             assertSupportedRuntime(ex3_5, preParsedQuery.runtime)
-            innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1, runtime = CypherRuntimeOption.interpreted))
+            innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1, runtime = CypherRuntimeOption.interpreted), params)
 
           case ex: SyntaxException if ex.getMessage.startsWith("START is deprecated") =>
-            val ex3_5 = ex.getCause.asInstanceOf[util.SyntaxException]
-            notifications += createStartUnavailableNotification(ex3_5, inputPosition)
-            notifications += createStartDeprecatedNotification(ex3_5, inputPosition)
+            val ex3_5 = ex.getCause.asInstanceOf[InternalSyntaxException]
+            logger.log(StartUnavailableFallback)
+            logger.log(DeprecatedStartNotification(inputPosition, ex.getMessage))
             assertSupportedRuntime(ex3_5, preParsedQuery.runtime)
-            innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1, runtime = CypherRuntimeOption.interpreted))
+            innerCompile(preParsedQuery.copy(version = CypherVersion.v3_1, runtime = CypherRuntimeOption.interpreted), params)
         }
 
       } else {
@@ -150,70 +131,19 @@ class MasterCompiler(graph: GraphDatabaseQueryService,
         val compiler = compilerLibrary.selectCompiler(preParsedQuery.version,
                                                       preParsedQuery.planner,
                                                       preParsedQuery.runtime,
-                                                      preParsedQuery.updateStrategy,
-                                                      compilerConfig)
+                                                      preParsedQuery.updateStrategy)
 
-        compiler.compile(preParsedQuery, tracer, notifications.result(), transactionalContext)
+        compiler.compile(preParsedQuery, tracer, notificationsSoFar(), transactionalContext, params)
       }
     }
 
+    if (preParsedQuery.planner == CypherPlannerOption.rule)
+      logger.log(DeprecatedRulePlannerNotification)
+
+    if (preParsedQuery.runtime == CypherRuntimeOption.compiled)
+      logger.log(DeprecatedCompiledRuntimeNotification)
+
     // Do the compilation
-    innerCompile(preParsedQuery)
-  }
-
-  private def createStartUnavailableNotification(ex: util.SyntaxException, inputPosition: InputPosition) = {
-    val pos = convertInputPosition(ex.pos.getOrElse(inputPosition))
-    START_UNAVAILABLE_FALLBACK.notification(pos)
-  }
-
-  private def createStartDeprecatedNotification(ex: util.SyntaxException, inputPosition: InputPosition) = {
-    val pos = convertInputPosition(ex.pos.getOrElse(inputPosition))
-    START_DEPRECATED.notification(pos, message("START", ex.getMessage))
-  }
-
-  private def runtimeUnsupportedNotification(ex: util.SyntaxException, inputPosition: InputPosition) = {
-    val pos = convertInputPosition(ex.pos.getOrElse(inputPosition))
-    RUNTIME_UNSUPPORTED.notification(pos)
-  }
-
-  private def createUniqueNotification(ex: util.SyntaxException, inputPosition: InputPosition) = {
-    val pos = convertInputPosition(ex.pos.getOrElse(inputPosition))
-    CREATE_UNIQUE_UNAVAILABLE_FALLBACK.notification(pos)
-  }
-
-  private def rulePlannerUnavailableFallbackNotification(offset: InputPosition) =
-    RULE_PLANNER_UNAVAILABLE_FALLBACK.notification(convertInputPosition(offset))
-
-  private def convertInputPosition(offset: InputPosition) =
-    new org.neo4j.graphdb.InputPosition(offset.offset, offset.line, offset.column)
-
-  private def getStatisticsDivergenceCalculator: StatsDivergenceCalculator = {
-    val divergenceThreshold = getSetting(graph,
-      config => config.get(GraphDatabaseSettings.query_statistics_divergence_threshold).doubleValue(),
-      DEFAULT_STATISTICS_DIVERGENCE_THRESHOLD)
-    val targetThreshold = getSetting(graph,
-      config => config.get(GraphDatabaseSettings.query_statistics_divergence_target).doubleValue(),
-      DEFAULT_STATISTICS_DIVERGENCE_TARGET)
-    val minReplanTime = getSetting(graph,
-      config => config.get(GraphDatabaseSettings.cypher_min_replan_interval).toMillis.longValue(),
-      DEFAULT_QUERY_PLAN_TTL)
-    val targetReplanTime = getSetting(graph,
-      config => config.get(GraphDatabaseSettings.cypher_replan_interval_target).toMillis.longValue(),
-      DEFAULT_QUERY_PLAN_TARGET)
-    val divergenceAlgorithm = getSetting(graph,
-      config => config.get(GraphDatabaseSettings.cypher_replan_algorithm),
-      DEFAULT_DIVERGENCE_ALGORITHM)
-    StatsDivergenceCalculator.divergenceCalculatorFor(divergenceAlgorithm, divergenceThreshold, targetThreshold, minReplanTime, targetReplanTime)
-  }
-
-  private def getNonIndexedLabelWarningThreshold: Long = {
-    val setting: (Config) => Long = config => config.get(GraphDatabaseSettings.query_non_indexed_label_warning_threshold).longValue()
-    getSetting(graph, setting, DEFAULT_NON_INDEXED_LABEL_WARNING_THRESHOLD)
-  }
-
-  private def getSetting[A](gds: GraphDatabaseQueryService, configLookup: Config => A, default: A): A = gds match {
-    // TODO: Cypher should not be pulling out components from casted interfaces, it should ask for Config as a dep
-    case (gdbApi:GraphDatabaseQueryService) => configLookup(gdbApi.getDependencyResolver.resolveDependency(classOf[Config]))
-    case _ => default
+    innerCompile(preParsedQuery, params)
   }
 }

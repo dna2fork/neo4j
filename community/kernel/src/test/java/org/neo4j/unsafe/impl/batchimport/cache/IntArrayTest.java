@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -40,6 +40,7 @@ import static java.lang.System.currentTimeMillis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.DynamicTest.stream;
 import static org.neo4j.unsafe.impl.batchimport.cache.NumberArrayFactory.HEAP;
+import static org.neo4j.unsafe.impl.batchimport.cache.NumberArrayFactory.NO_MONITOR;
 import static org.neo4j.unsafe.impl.batchimport.cache.NumberArrayFactory.OFF_HEAP;
 import static org.neo4j.unsafe.impl.batchimport.cache.NumberArrayFactory.auto;
 
@@ -134,7 +135,7 @@ class IntArrayTest extends NumberArrayPageCacheTestSupport
     {
         PageCache pageCache = fixture.pageCache;
         File dir = fixture.directory;
-        NumberArrayFactory autoWithPageCacheFallback = auto( pageCache, dir, true );
+        NumberArrayFactory autoWithPageCacheFallback = auto( pageCache, dir, true, NO_MONITOR );
         NumberArrayFactory pageCacheArrayFactory = new PageCachedNumberArrayFactory( pageCache, dir );
         return Iterators.iterator( HEAP, OFF_HEAP, autoWithPageCacheFallback, pageCacheArrayFactory );
     }

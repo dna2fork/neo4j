@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -28,8 +28,8 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-import org.opencypher.v9_0.util.IncomparableValuesException;
-import org.opencypher.v9_0.util.UnorderableValueException;
+import org.neo4j.cypher.internal.v3_5.util.IncomparableValuesException;
+import org.neo4j.cypher.internal.v3_5.util.UnorderableValueException;
 import org.neo4j.graphdb.Path;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.helpers.MathUtil;
@@ -121,7 +121,7 @@ public class CypherOrderability
         }
         else if ( rhs instanceof AnyValue )
         {
-            AnyValue lhsValue = (lhs instanceof AnyValue) ? (AnyValue) lhs : ValueUtils.of( lhs );
+            AnyValue lhsValue = ValueUtils.of( lhs );
             return AnyValues.COMPARATOR.compare( lhsValue, (AnyValue) rhs );
         }
         // Compare the types

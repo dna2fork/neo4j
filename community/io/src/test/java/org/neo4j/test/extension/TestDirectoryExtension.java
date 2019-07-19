@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,16 +24,18 @@ import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
+import org.junit.platform.commons.JUnitException;
 
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.test.rule.TestDirectory;
 
+import static java.lang.String.format;
 import static org.neo4j.test.rule.TestDirectory.testDirectory;
 
 public class TestDirectoryExtension extends StatefullFieldExtension<TestDirectory> implements BeforeEachCallback, AfterEachCallback, AfterAllCallback
 {
-    private static final String TEST_DIRECTORY = "testDirectory";
-    private static final Namespace TEST_DIRECTORY_NAMESPACE = Namespace.create( TEST_DIRECTORY );
+    static final String TEST_DIRECTORY = "testDirectory";
+    static final Namespace TEST_DIRECTORY_NAMESPACE = Namespace.create( TEST_DIRECTORY );
 
     @Override
     public void beforeEach( ExtensionContext context ) throws Exception
@@ -43,10 +45,17 @@ public class TestDirectoryExtension extends StatefullFieldExtension<TestDirector
     }
 
     @Override
-    public void afterEach( ExtensionContext context ) throws Exception
+    public void afterEach( ExtensionContext context )
     {
         TestDirectory testDirectory = getStoredValue( context );
-        testDirectory.complete( context.getExecutionException().isPresent() );
+        try
+        {
+            testDirectory.complete( !context.getExecutionException().isPresent() );
+        }
+        catch ( Exception e )
+        {
+            throw new JUnitException( format( "Fail to cleanup test directory for %s test.", context.getDisplayName() ), e );
+        }
     }
 
     @Override
@@ -64,8 +73,8 @@ public class TestDirectoryExtension extends StatefullFieldExtension<TestDirector
     @Override
     protected TestDirectory createField( ExtensionContext extensionContext )
     {
-        ExtensionContext.Store fileSystemStore = getStore( extensionContext, DefaultFileSystemExtension.FILE_SYSTEM_NAMESPACE );
-        FileSystemAbstraction fileSystemAbstraction = fileSystemStore.get( DefaultFileSystemExtension.FILE_SYSTEM, FileSystemAbstraction.class );
+        ExtensionContext.Store fileSystemStore = getStore( extensionContext, FileSystemExtension.FILE_SYSTEM_NAMESPACE );
+        FileSystemAbstraction fileSystemAbstraction = fileSystemStore.get( FileSystemExtension.FILE_SYSTEM, FileSystemAbstraction.class );
         return fileSystemAbstraction != null ? testDirectory(fileSystemAbstraction) : testDirectory();
     }
 

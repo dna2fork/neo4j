@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,20 +19,25 @@
  */
 package org.neo4j.cypher.internal.compatibility
 
-import org.neo4j.cypher.{CypherRuntimeOption, InvalidArgumentException, exceptionHandler}
-import org.neo4j.cypher.internal.compatibility.v3_5.runtime._
-import org.neo4j.cypher.internal.compatibility.v3_5.runtime.executionplan.ExecutionPlan
-import org.neo4j.cypher.internal.compiler.v3_5.RuntimeUnsupportedNotification
+import java.time.Clock
+
+import org.neo4j.cypher.internal.compatibility.v3_5.runtime.executionplan.{DelegatingExecutionPlan, ExecutionPlan}
 import org.neo4j.cypher.internal.compiler.v3_5.phases.LogicalPlanState
 import org.neo4j.cypher.internal.compiler.v3_5.planner.CantCompileQueryException
+import org.neo4j.cypher.internal.compiler.v3_5.{CypherPlannerConfiguration, RuntimeUnsupportedNotification}
+import org.neo4j.cypher.internal.planner.v3_5.spi.TokenContext
+import org.neo4j.cypher.internal.v3_5.frontend.phases.RecordingNotificationLogger
+import org.neo4j.cypher.internal.v3_5.util.InternalNotification
+import org.neo4j.cypher.{CypherRuntimeOption, InvalidArgumentException, exceptionHandler}
+import org.neo4j.logging.Log
 
-import scala.util.{Failure, Try}
+import scala.concurrent.duration.Duration
 
 /**
   * A cypher runtime. Compiles logical plans into a executable form, which can
   * be used directly to serve the query.
   */
-trait CypherRuntime[-CONTEXT <: CommunityRuntimeContext] {
+trait CypherRuntime[-CONTEXT <: RuntimeContext] {
 
   /**
     * Compile a logical plan to an executable plan.
@@ -47,50 +52,97 @@ trait CypherRuntime[-CONTEXT <: CommunityRuntimeContext] {
 }
 
 /**
+  * Context in which the Runtime performs physical planning
+  */
+abstract class RuntimeContext {
+  def tokenContext: TokenContext
+  def readOnly: Boolean
+  def config: CypherPlannerConfiguration
+  def compileExpressions: Boolean
+  def log: Log
+}
+
+/**
+  * Creator of runtime contexts.
+  *
+  * @tparam CONTEXT type of runtime context created
+  */
+trait RuntimeContextCreator[CONTEXT <: RuntimeContext] {
+  def create(tokenContext: TokenContext,
+             clock: Clock,
+             debugOptions: Set[String],
+             readOnly: Boolean,
+             compileExpressions: Boolean
+            ): CONTEXT
+}
+
+/**
   * Cypher runtime representing a user-selected runtime which is not supported.
   */
-object UnknownRuntime extends CypherRuntime[CommunityRuntimeContext] {
-  def compileToExecutable(logicalPlan: LogicalPlanState, context: CommunityRuntimeContext): ExecutionPlan =
+object UnknownRuntime extends CypherRuntime[RuntimeContext] {
+  def compileToExecutable(logicalPlan: LogicalPlanState, context: RuntimeContext): ExecutionPlan =
     throw new CantCompileQueryException()
 }
 
 /**
   * Composite cypher runtime, which attempts to compile using several different runtimes before giving up.
   *
-  * In addition to attempting the provided runtimes, this runtime allways first attempt to compile using
-  * `org.neo4j.cypher.internal.compatibility.ProcedureCallOrSchemaCommandRuntime`, in case the query
-  * is a simple procedure call of schema command.
-  *
   * @param runtimes the runtimes to attempt to compile with, in order of priority
   * @param requestedRuntime the requested runtime, used to provide error messages
   */
-class FallbackRuntime[CONTEXT <: CommunityRuntimeContext](runtimes: Seq[CypherRuntime[CONTEXT]],
-                                                          requestedRuntime: CypherRuntimeOption) extends CypherRuntime[CONTEXT] {
+class FallbackRuntime[CONTEXT <: RuntimeContext](runtimes: Seq[CypherRuntime[CONTEXT]],
+                                                 requestedRuntime: CypherRuntimeOption) extends CypherRuntime[CONTEXT] {
 
-  private val PublicCannotCompile =
+  private def publicCannotCompile(originalException: Exception) =
     {
       val message = s"This version of Neo4j does not support requested runtime: ${requestedRuntime.name}"
-      val invalidArgument = new InvalidArgumentException(message)
+      val invalidArgument = new InvalidArgumentException(message, originalException)
       new org.neo4j.graphdb.QueryExecutionException(message, invalidArgument, invalidArgument.status.code().serialize())
     }
 
   override def compileToExecutable(logicalPlan: LogicalPlanState, context: CONTEXT): ExecutionPlan = {
-    var executionPlan: Try[ExecutionPlan] = Try(ProcedureCallOrSchemaCommandRuntime.compileToExecutable(logicalPlan, context))
+    val logger = new RecordingNotificationLogger()
 
-    for (runtime <- runtimes if executionPlan.isFailure) {
-      executionPlan =
-        Try(
-          exceptionHandler.runSafely(
-            runtime.compileToExecutable(logicalPlan, context)
-          )
-        )
+    var i = 0
+    var lastException: Exception = null
+    while (i < runtimes.length) {
+      val runtime = runtimes(i)
 
-      if (executionPlan.isFailure && requestedRuntime != CypherRuntimeOption.default)
-        context.notificationLogger.log(RuntimeUnsupportedNotification)
+      try {
+        val plan = exceptionHandler.runSafely(runtime.compileToExecutable(logicalPlan, context))
+        val notifications = logger.notifications
+        val notifiedPlan = if (notifications.isEmpty) plan else ExecutionPlanWithNotifications(plan, notifications)
+       return notifiedPlan
+      } catch {
+        case e: CantCompileQueryException =>
+          lastException = e
+          if (runtime != ProcedureCallOrSchemaCommandRuntime && requestedRuntime != CypherRuntimeOption.default) {
+            logger.log(RuntimeUnsupportedNotification)
+          }
+        case e: Exception =>
+          lastException = e
+          // That is unexpected. Let's log, but continue trying other runtimes
+          context.log.debug(s"Runtime ${runtime.getClass.getSimpleName} failed to compile query ${logicalPlan.queryText}", e)
+      }
+      i += 1
     }
+    // All runtimes failed
+    lastException match {
+      case e:CantCompileQueryException =>
+        throw publicCannotCompile(e)
+      case e =>
+        throw e
 
-    executionPlan.recover({
-      case e: CantCompileQueryException => throw PublicCannotCompile
-    }).get
+    }
   }
+}
+
+case class CypherRuntimeConfiguration(workers: Int,
+                                      morselSize: Int,
+                                      doSchedulerTracing: Boolean,
+                                      waitTimeout: Duration)
+
+case class ExecutionPlanWithNotifications(inner: ExecutionPlan, extraNotifications: Set[InternalNotification]) extends DelegatingExecutionPlan(inner) {
+
+  override def notifications: Set[InternalNotification] = inner.notifications ++ extraNotifications
 }

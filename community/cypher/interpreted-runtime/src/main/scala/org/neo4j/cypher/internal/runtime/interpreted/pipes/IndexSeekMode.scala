@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
-import org.opencypher.v9_0.util.InternalException
+import org.neo4j.cypher.internal.v3_5.util.InternalException
 import org.neo4j.cypher.internal.v3_5.logical.plans.{QueryExpression, RangeQueryExpression}
 import org.neo4j.values.virtual.NodeValue
 

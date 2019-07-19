@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -33,7 +33,7 @@ import org.neo4j.logging.LogProvider;
  */
 public class DatabaseSchemaState implements SchemaState
 {
-    private Map<Object, Object> state;
+    private final Map<Object, Object> state;
     private final Log log;
 
     public DatabaseSchemaState( LogProvider logProvider )

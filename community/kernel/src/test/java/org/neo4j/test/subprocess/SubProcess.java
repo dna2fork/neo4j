@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -57,9 +57,9 @@ import java.util.stream.Stream;
 
 import org.neo4j.test.ProcessStreamHandler;
 
-import static org.neo4j.io.proc.ProcessUtil.getClassPath;
-import static org.neo4j.io.proc.ProcessUtil.getClassPathList;
-import static org.neo4j.io.proc.ProcessUtil.getJavaExecutable;
+import static org.neo4j.test.proc.ProcessUtil.getClassPath;
+import static org.neo4j.test.proc.ProcessUtil.getClassPathList;
+import static org.neo4j.test.proc.ProcessUtil.getJavaExecutable;
 
 public abstract class SubProcess<T, P> implements Serializable
 {
@@ -477,7 +477,7 @@ public abstract class SubProcess<T, P> implements Serializable
 
         Dispatcher get( @SuppressWarnings( "hiding" ) Process process )
         {
-            while ( dispatcher == null )
+            while ( dispatcher == null && process.isAlive() )
             {
                 try
                 {
@@ -487,15 +487,6 @@ public abstract class SubProcess<T, P> implements Serializable
                 {
                     Thread.currentThread().interrupt();
                 }
-                try
-                {
-                    process.exitValue();
-                }
-                catch ( IllegalThreadStateException e )
-                {
-                    continue;
-                }
-                return null;
             }
             return dispatcher;
         }

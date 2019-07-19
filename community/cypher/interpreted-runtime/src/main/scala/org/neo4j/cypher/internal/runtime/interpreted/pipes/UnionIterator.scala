@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -39,19 +39,19 @@ class UnionIterator(in: Seq[Pipe], state: QueryState) extends Iterator[Execution
   var pipesLeft: List[Pipe] = in.toList
 
   def hasNext: Boolean = {
-    stepIfNeccessary()
+    stepIfNecessary()
     currentValue.nonEmpty
   }
 
   def next(): ExecutionContext = {
-    stepIfNeccessary()
+    stepIfNecessary()
 
     val result = currentValue.getOrElse(Iterator.empty.next())
     currentValue = null
     result
   }
 
-  private def stepIfNeccessary() {
+  private def stepIfNecessary() {
     def loadNextIterator() {
       val p = pipesLeft.head
       pipesLeft = pipesLeft.tail

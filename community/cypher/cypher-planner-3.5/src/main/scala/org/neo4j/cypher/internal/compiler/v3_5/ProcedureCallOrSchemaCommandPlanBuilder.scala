@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,14 +20,15 @@
 package org.neo4j.cypher.internal.compiler.v3_5
 
 import org.neo4j.cypher.internal.compiler.v3_5.phases._
-import org.opencypher.v9_0.ast._
-import org.opencypher.v9_0.frontend.phases.{BaseState, Condition, Phase}
-import org.opencypher.v9_0.ast.semantics.{SemanticCheckResult, SemanticState}
-import org.opencypher.v9_0.util.attribution.SequentialIdGen
+import org.neo4j.cypher.internal.planner.v3_5.spi.ProcedurePlannerName
 import org.neo4j.cypher.internal.v3_5.logical.plans
 import org.neo4j.cypher.internal.v3_5.logical.plans.{LogicalPlan, ResolvedCall}
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.PIPE_BUILDING
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.ast.semantics.{SemanticCheckResult, SemanticState}
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer.CompilationPhase
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer.CompilationPhase.PIPE_BUILDING
+import org.neo4j.cypher.internal.v3_5.frontend.phases.{BaseState, Condition, Phase}
+import org.neo4j.cypher.internal.v3_5.util.attribution.SequentialIdGen
 
 /**
   * This planner takes on queries that requires no planning such as procedures and schema commands
@@ -95,6 +96,10 @@ case object ProcedureCallOrSchemaCommandPlanBuilder extends Phase[PlannerContext
       case _ => None
     }
 
-    LogicalPlanState(from).withMaybeLogicalPlan(maybeLogicalPlan)
+    val planState = LogicalPlanState(from)
+
+    if (maybeLogicalPlan.isDefined)
+      planState.copy(maybeLogicalPlan = maybeLogicalPlan, plannerName = ProcedurePlannerName)
+    else planState
   }
 }

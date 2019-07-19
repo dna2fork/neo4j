@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,12 +19,12 @@
  */
 package org.neo4j.kernel.impl.newapi;
 
-import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.neo4j.collection.RawIterator;
 import org.neo4j.helpers.collection.Iterators;
@@ -34,32 +34,27 @@ import org.neo4j.internal.kernel.api.exceptions.KernelException;
 import org.neo4j.internal.kernel.api.exceptions.ProcedureException;
 import org.neo4j.internal.kernel.api.exceptions.explicitindex.ExplicitIndexNotFoundKernelException;
 import org.neo4j.internal.kernel.api.exceptions.schema.ConstraintValidationException;
+import org.neo4j.internal.kernel.api.exceptions.schema.CreateConstraintFailureException;
+import org.neo4j.internal.kernel.api.exceptions.schema.IndexNotFoundKernelException;
 import org.neo4j.internal.kernel.api.procs.ProcedureHandle;
 import org.neo4j.internal.kernel.api.procs.ProcedureSignature;
 import org.neo4j.internal.kernel.api.procs.QualifiedName;
 import org.neo4j.internal.kernel.api.procs.UserAggregator;
 import org.neo4j.internal.kernel.api.procs.UserFunctionHandle;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
 import org.neo4j.internal.kernel.api.schema.SchemaUtil;
 import org.neo4j.internal.kernel.api.schema.constraints.ConstraintDescriptor;
 import org.neo4j.internal.kernel.api.security.AccessMode;
 import org.neo4j.internal.kernel.api.security.SecurityContext;
-import org.neo4j.io.pagecache.PageCursor;
 import org.neo4j.kernel.api.ExplicitIndex;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
-import org.neo4j.kernel.api.exceptions.index.IndexNotFoundKernelException;
-import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
 import org.neo4j.kernel.api.exceptions.schema.SchemaRuleNotFoundException;
-import org.neo4j.kernel.api.index.IndexProvider;
 import org.neo4j.kernel.api.proc.BasicContext;
 import org.neo4j.kernel.api.proc.Context;
 import org.neo4j.kernel.api.schema.LabelSchemaDescriptor;
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.api.txstate.TransactionCountingStateVisitor;
 import org.neo4j.kernel.api.txstate.TransactionState;
 import org.neo4j.kernel.impl.api.ClockContext;
@@ -72,28 +67,24 @@ import org.neo4j.kernel.impl.index.ExplicitIndexStore;
 import org.neo4j.kernel.impl.index.IndexEntityType;
 import org.neo4j.kernel.impl.locking.ResourceTypes;
 import org.neo4j.kernel.impl.proc.Procedures;
-import org.neo4j.kernel.impl.store.PropertyStore;
-import org.neo4j.kernel.impl.store.RecordCursor;
-import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.impl.store.record.NodeRecord;
-import org.neo4j.kernel.impl.store.record.PropertyRecord;
-import org.neo4j.kernel.impl.store.record.RecordLoad;
-import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
-import org.neo4j.kernel.impl.store.record.RelationshipRecord;
+import org.neo4j.kernel.impl.util.Dependencies;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.register.Register;
+import org.neo4j.internal.kernel.api.SchemaReadCore;
 import org.neo4j.storageengine.api.StorageReader;
+import org.neo4j.storageengine.api.StorageSchemaReader;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
 import org.neo4j.storageengine.api.schema.IndexReader;
 import org.neo4j.storageengine.api.schema.LabelScanReader;
 import org.neo4j.storageengine.api.schema.PopulationProgress;
 import org.neo4j.storageengine.api.schema.SchemaRule;
-import org.neo4j.storageengine.api.txstate.ReadableDiffSets;
-import org.neo4j.string.UTF8;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
+import org.neo4j.storageengine.api.txstate.DiffSets;
 import org.neo4j.values.AnyValue;
 import org.neo4j.values.ValueMapper;
-import org.neo4j.values.storable.ArrayValue;
-import org.neo4j.values.storable.TextValue;
 import org.neo4j.values.storable.Value;
-import org.neo4j.values.storable.Values;
 
 import static java.lang.String.format;
 import static org.neo4j.helpers.collection.Iterators.filter;
@@ -104,32 +95,21 @@ import static org.neo4j.storageengine.api.txstate.TxStateVisitor.EMPTY;
 
 public class AllStoreHolder extends Read
 {
-    private final StorageReader.Nodes nodes;
-    private final StorageReader.Groups groups;
-    private final StorageReader.Properties properties;
-    private final StorageReader.Relationships relationships;
     private final StorageReader storageReader;
     private final ExplicitIndexStore explicitIndexStore;
     private final Procedures procedures;
     private final SchemaState schemaState;
+    private final Dependencies dataSourceDependencies;
 
-    public AllStoreHolder(
-            StorageReader storageReader,
-            KernelTransactionImplementation ktx,
-            DefaultCursors cursors,
-            ExplicitIndexStore explicitIndexStore,
-            Procedures procedures,
-            SchemaState schemaState )
+    public AllStoreHolder( StorageReader storageReader, KernelTransactionImplementation ktx, DefaultCursors cursors, ExplicitIndexStore explicitIndexStore,
+            Procedures procedures, SchemaState schemaState, Dependencies dataSourceDependencies )
     {
         super( cursors, ktx );
         this.storageReader = storageReader;
-        this.nodes = storageReader.nodes();
-        this.relationships = storageReader.relationships();
-        this.groups = storageReader.groups();
-        this.properties = storageReader.properties();
         this.explicitIndexStore = explicitIndexStore;
         this.procedures = procedures;
         this.schemaState = schemaState;
+        this.dataSourceDependencies = dataSourceDependencies;
     }
 
     @Override
@@ -164,6 +144,13 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
         return hasTxStateWithChanges() && txState().relationshipIsDeletedInThisTx( relationship );
+    }
+
+    @Override
+    public Value nodePropertyChangeInTransactionOrNull( long node, int propertyKeyId )
+    {
+        ktx.assertOpen();
+        return hasTxStateWithChanges() ? txState().getNodeState( node ).propertyValue( propertyKeyId ) : null;
     }
 
     @Override
@@ -256,8 +243,9 @@ public class AllStoreHolder extends Read
     }
 
     @Override
-    IndexReader indexReader( IndexReference index, boolean fresh ) throws IndexNotFoundKernelException
+    public IndexReader indexReader( IndexReference index, boolean fresh ) throws IndexNotFoundKernelException
     {
+        assertValidIndex( index );
         return fresh ? storageReader.getFreshIndexReader( (IndexDescriptor) index ) :
                storageReader.getIndexReader( (IndexDescriptor) index );
     }
@@ -344,7 +332,7 @@ public class AllStoreHolder extends Read
         CapableIndexDescriptor indexDescriptor = storageReader.indexGetForSchema( descriptor );
         if ( ktx.hasTxStateWithChanges() )
         {
-            ReadableDiffSets<IndexDescriptor> diffSets = ktx.txState().indexDiffSetsByLabel( label );
+            DiffSets<IndexDescriptor> diffSets = ktx.txState().indexDiffSetsByLabel( label );
             if ( indexDescriptor != null )
             {
                 if ( diffSets.isRemoved( indexDescriptor ) )
@@ -375,25 +363,127 @@ public class AllStoreHolder extends Read
     }
 
     @Override
+    public IndexReference index( SchemaDescriptor schema )
+    {
+        ktx.assertOpen();
+        return indexGetForSchema( storageReader, schema );
+    }
+
+    IndexReference indexGetForSchema( StorageSchemaReader reader, SchemaDescriptor schema )
+    {
+        CapableIndexDescriptor indexDescriptor = reader.indexGetForSchema( schema );
+        if ( ktx.hasTxStateWithChanges() )
+        {
+            DiffSets<IndexDescriptor> diffSets = ktx.txState().indexDiffSetsBySchema( schema );
+            if ( indexDescriptor != null )
+            {
+                if ( diffSets.isRemoved( indexDescriptor ) )
+                {
+                    return IndexReference.NO_INDEX;
+                }
+                else
+                {
+                    return indexDescriptor;
+                }
+            }
+            else
+            {
+                Iterator<IndexDescriptor> fromTxState =
+                        filter( SchemaDescriptor.equalTo( schema ), diffSets.getAdded().iterator() );
+                if ( fromTxState.hasNext() )
+                {
+                    return fromTxState.next();
+                }
+                else
+                {
+                    return IndexReference.NO_INDEX;
+                }
+            }
+        }
+
+        return indexDescriptor != null ? indexDescriptor : IndexReference.NO_INDEX;
+    }
+
+    @Override
     public IndexReference indexReferenceUnchecked( int label, int... properties )
     {
         return IndexDescriptorFactory.forSchema( SchemaDescriptorFactory.forLabel( label, properties ),
                                                  Optional.empty(),
-                                                 IndexProvider.UNDECIDED );
+                                                 IndexProviderDescriptor.UNDECIDED );
+    }
+
+    @Override
+    public IndexReference indexReferenceUnchecked( SchemaDescriptor schema )
+    {
+        return IndexDescriptorFactory.forSchema( schema, Optional.empty(), IndexProviderDescriptor.UNDECIDED );
     }
 
     @Override
     public Iterator<IndexReference> indexesGetForLabel( int labelId )
     {
-        sharedOptimisticLock( ResourceTypes.LABEL, labelId );
+        acquireSharedLock( ResourceTypes.LABEL, labelId );
         ktx.assertOpen();
+        return indexesGetForLabel( storageReader, labelId );
+    }
 
-        Iterator<? extends IndexDescriptor> iterator = storageReader.indexesGetForLabel( labelId );
+    Iterator<IndexReference> indexesGetForLabel( StorageSchemaReader reader, int labelId )
+    {
+        Iterator<? extends IndexDescriptor> iterator = reader.indexesGetForLabel( labelId );
         if ( ktx.hasTxStateWithChanges() )
         {
             iterator = ktx.txState().indexDiffSetsByLabel( labelId ).apply( iterator );
         }
-        return (Iterator)iterator;
+        //noinspection unchecked
+        return (Iterator) iterator;
+    }
+
+    @Override
+    public Iterator<IndexReference> indexesGetForRelationshipType( int relationshipType )
+    {
+        acquireSharedLock( ResourceTypes.RELATIONSHIP_TYPE, relationshipType );
+        ktx.assertOpen();
+        return indexesGetForRelationshipType( storageReader, relationshipType );
+    }
+
+    Iterator<IndexReference> indexesGetForRelationshipType( StorageSchemaReader reader, int relationshipType )
+    {
+        Iterator<? extends IndexDescriptor> iterator = reader.indexesGetForRelationshipType( relationshipType );
+        if ( ktx.hasTxStateWithChanges() )
+        {
+            iterator = ktx.txState().indexDiffSetsByRelationshipType( relationshipType ).apply( iterator );
+        }
+        //noinspection unchecked
+        return (Iterator) iterator;
+    }
+
+    @Override
+    public IndexReference indexGetForName( String name )
+    {
+        ktx.assertOpen();
+
+        IndexDescriptor index = storageReader.indexGetForName( name );
+        if ( ktx.hasTxStateWithChanges() )
+        {
+            Predicate<IndexDescriptor> namePredicate = indexDescriptor ->
+            {
+                Optional<String> userSuppliedName = indexDescriptor.getUserSuppliedName();
+                //noinspection OptionalIsPresent -- the suggested functional style causes allocation we can trivially avoid.
+                if ( userSuppliedName.isPresent() )
+                {
+                    return userSuppliedName.get().equals( name );
+                }
+                //No name cannot match a name.
+                return false;
+            };
+            Iterator<IndexDescriptor> indexes = ktx.txState().indexChanges().filterAdded( namePredicate ).apply( Iterators.iterator( index ) );
+            index = singleOrNull( indexes );
+        }
+        if ( index == null )
+        {
+            return IndexReference.NO_INDEX;
+        }
+        acquireSharedSchemaLock( index.schema() );
+        return index;
     }
 
     @Override
@@ -401,24 +491,30 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
 
-        Iterator<? extends IndexDescriptor> iterator = storageReader.indexesGetAll();
-        if ( ktx.hasTxStateWithChanges() )
-        {
-            iterator = ktx.txState().indexChanges().apply( storageReader.indexesGetAll() );
-        }
+        Iterator<? extends IndexDescriptor> iterator = indexesGetAll( storageReader );
 
         return Iterators.map( indexDescriptor ->
         {
-            sharedOptimisticLock( ResourceTypes.LABEL, indexDescriptor.schema().keyId() );
+            acquireSharedSchemaLock( indexDescriptor.schema() );
             return indexDescriptor;
         }, iterator );
+    }
+
+    Iterator<? extends IndexDescriptor> indexesGetAll( StorageSchemaReader reader )
+    {
+        Iterator<? extends IndexDescriptor> iterator = reader.indexesGetAll();
+        if ( ktx.hasTxStateWithChanges() )
+        {
+            iterator = ktx.txState().indexChanges().apply( iterator );
+        }
+        return iterator;
     }
 
     @Override
     public InternalIndexState indexGetState( IndexReference index ) throws IndexNotFoundKernelException
     {
         assertValidIndex( index );
-        sharedOptimisticLock( ResourceTypes.LABEL, index.label() );
+        acquireSharedSchemaLock( index.schema() );
         ktx.assertOpen();
         return indexGetState( (IndexDescriptor) index );
     }
@@ -427,26 +523,30 @@ public class AllStoreHolder extends Read
     public PopulationProgress indexGetPopulationProgress( IndexReference index )
             throws IndexNotFoundKernelException
     {
-        sharedOptimisticLock( ResourceTypes.LABEL, index.label() );
+        assertValidIndex( index );
+        acquireSharedSchemaLock( index.schema() );
         ktx.assertOpen();
-        IndexDescriptor descriptor = (IndexDescriptor) index;
+        return indexGetPopulationProgress( storageReader, index );
+    }
 
+    PopulationProgress indexGetPopulationProgress( StorageSchemaReader reader, IndexReference index )
+            throws IndexNotFoundKernelException
+    {
         if ( ktx.hasTxStateWithChanges() )
         {
-            if ( checkIndexState( descriptor,
-                    ktx.txState().indexDiffSetsByLabel( index.label() ) ) )
+            if ( checkIndexState( (IndexDescriptor) index, ktx.txState().indexDiffSetsBySchema( index.schema() ) ) )
             {
                 return PopulationProgress.NONE;
             }
         }
 
-        return storageReader.indexGetPopulationProgress( descriptor.schema() );
+        return reader.indexGetPopulationProgress( index.schema() );
     }
 
     @Override
     public Long indexGetOwningUniquenessConstraintId( IndexReference index )
     {
-        sharedOptimisticLock( ResourceTypes.LABEL, index.label() );
+        acquireSharedSchemaLock( index.schema() );
         ktx.assertOpen();
         if ( index instanceof StoreIndexDescriptor )
         {
@@ -461,7 +561,7 @@ public class AllStoreHolder extends Read
     @Override
     public long indexGetCommittedId( IndexReference index ) throws SchemaRuleNotFoundException
     {
-        sharedOptimisticLock( ResourceTypes.LABEL, index.label() );
+        acquireSharedSchemaLock( index.schema() );
         ktx.assertOpen();
         if ( index instanceof StoreIndexDescriptor )
         {
@@ -469,39 +569,44 @@ public class AllStoreHolder extends Read
         }
         else
         {
-            throw new SchemaRuleNotFoundException( SchemaRule.Kind.INDEX_RULE, ((IndexDescriptor)index).schema() );
+            throw new SchemaRuleNotFoundException( SchemaRule.Kind.INDEX_RULE, index.schema() );
         }
     }
 
     @Override
     public String indexGetFailure( IndexReference index ) throws IndexNotFoundKernelException
     {
-        return storageReader.indexGetFailure( SchemaDescriptorFactory.forLabel( index.label(), index.properties() ) );
+        assertValidIndex( index );
+        return storageReader.indexGetFailure( index.schema() );
     }
 
     @Override
     public double indexUniqueValuesSelectivity( IndexReference index ) throws IndexNotFoundKernelException
     {
-        acquireSharedLabelLock( index.label() );
+        assertValidIndex( index );
+        SchemaDescriptor schema = index.schema();
+        acquireSharedSchemaLock( schema );
         ktx.assertOpen();
-        return storageReader
-                .indexUniqueValuesPercentage( SchemaDescriptorFactory.forLabel( index.label(), index.properties() ) );
+        return storageReader.indexUniqueValuesPercentage( schema );
     }
 
     @Override
     public long indexSize( IndexReference index ) throws IndexNotFoundKernelException
     {
-        acquireSharedLabelLock( index.label() );
+        assertValidIndex( index );
+        SchemaDescriptor schema = index.schema();
+        acquireSharedSchemaLock( schema );
         ktx.assertOpen();
-        return storageReader.indexSize( SchemaDescriptorFactory.forLabel( index.label(), index.properties() ) );
+        return storageReader.indexSize( schema );
     }
 
     @Override
-    public long nodesCountIndexed( IndexReference index, long nodeId, Value value ) throws KernelException
+    public long nodesCountIndexed( IndexReference index, long nodeId, int propertyKeyId, Value value ) throws KernelException
     {
         ktx.assertOpen();
+        assertValidIndex( index );
         IndexReader reader = storageReader.getIndexReader( (IndexDescriptor) index );
-        return reader.countIndexedNodes( nodeId, value );
+        return reader.countIndexedNodes( nodeId, new int[] {propertyKeyId}, value );
     }
 
     @Override
@@ -525,8 +630,8 @@ public class AllStoreHolder extends Read
             throws IndexNotFoundKernelException
     {
         ktx.assertOpen();
-        return storageReader.indexUpdatesAndSize(
-                SchemaDescriptorFactory.forLabel( index.label(), index.properties() ), target );
+        assertValidIndex( index );
+        return storageReader.indexUpdatesAndSize( index.schema(), target );
 
     }
 
@@ -535,8 +640,8 @@ public class AllStoreHolder extends Read
             throws IndexNotFoundKernelException
     {
         ktx.assertOpen();
-        return storageReader.indexSample(
-                SchemaDescriptorFactory.forLabel( index.label(), index.properties() ), target );
+        assertValidIndex( index );
+        return storageReader.indexSample( index.schema(), target );
     }
 
     IndexReference indexGetCapability( IndexDescriptor schemaIndexDescriptor )
@@ -553,17 +658,22 @@ public class AllStoreHolder extends Read
 
     InternalIndexState indexGetState( IndexDescriptor descriptor ) throws IndexNotFoundKernelException
     {
+        return indexGetState( storageReader, descriptor );
+    }
+
+    InternalIndexState indexGetState( StorageSchemaReader reader, IndexDescriptor descriptor ) throws IndexNotFoundKernelException
+    {
         // If index is in our state, then return populating
         if ( ktx.hasTxStateWithChanges() )
         {
             if ( checkIndexState( descriptor,
-                    ktx.txState().indexDiffSetsByLabel( descriptor.schema().keyId() ) ) )
+                    ktx.txState().indexDiffSetsBySchema( descriptor.schema() ) ) )
             {
                 return InternalIndexState.POPULATING;
             }
         }
 
-        return storageReader.indexGetState( descriptor );
+        return reader.indexGetState( descriptor );
     }
 
     Long indexGetOwningUniquenessConstraintId( IndexDescriptor index )
@@ -579,12 +689,12 @@ public class AllStoreHolder extends Read
         {
             indexes = filter(
                     SchemaDescriptor.equalTo( descriptor ),
-                    ktx.txState().indexDiffSetsByLabel( descriptor.keyId() ).apply( indexes ) );
+                    ktx.txState().indexDiffSetsBySchema( descriptor ).apply( indexes ) );
         }
         return singleOrNull( indexes );
     }
 
-    private boolean checkIndexState( IndexDescriptor index, ReadableDiffSets<IndexDescriptor> diffSet )
+    private boolean checkIndexState( IndexDescriptor index, DiffSets<IndexDescriptor> diffSet )
             throws IndexNotFoundKernelException
     {
         if ( diffSet.isAdded( index ) )
@@ -602,7 +712,7 @@ public class AllStoreHolder extends Read
     @Override
     public Iterator<ConstraintDescriptor> constraintsGetForSchema( SchemaDescriptor descriptor )
     {
-        sharedOptimisticLock( descriptor.keyType(), descriptor.keyId() );
+        acquireSharedSchemaLock( descriptor );
         ktx.assertOpen();
         Iterator<ConstraintDescriptor> constraints = storageReader.constraintsGetForSchema( descriptor );
         if ( ktx.hasTxStateWithChanges() )
@@ -616,12 +726,12 @@ public class AllStoreHolder extends Read
     public boolean constraintExists( ConstraintDescriptor descriptor )
     {
         SchemaDescriptor schema = descriptor.schema();
-        sharedOptimisticLock( schema.keyType(), schema.keyId() );
+        acquireSharedSchemaLock( schema );
         ktx.assertOpen();
         boolean inStore = storageReader.constraintExists( descriptor );
         if ( ktx.hasTxStateWithChanges() )
         {
-            ReadableDiffSets<ConstraintDescriptor> diffSet =
+            DiffSets<ConstraintDescriptor> diffSet =
                     ktx.txState().constraintsChangesForSchema( descriptor.schema() );
             return diffSet.isAdded( descriptor ) || (inStore && !diffSet.isRemoved( descriptor ));
         }
@@ -632,9 +742,14 @@ public class AllStoreHolder extends Read
     @Override
     public Iterator<ConstraintDescriptor> constraintsGetForLabel( int labelId )
     {
-        sharedOptimisticLock( ResourceTypes.LABEL, labelId );
+        acquireSharedLock( ResourceTypes.LABEL, labelId );
         ktx.assertOpen();
-        Iterator<ConstraintDescriptor> constraints = storageReader.constraintsGetForLabel( labelId );
+        return constraintsGetForLabel( storageReader, labelId );
+    }
+
+    Iterator<ConstraintDescriptor> constraintsGetForLabel( StorageSchemaReader reader, int labelId )
+    {
+        Iterator<ConstraintDescriptor> constraints = reader.constraintsGetForLabel( labelId );
         if ( ktx.hasTxStateWithChanges() )
         {
             return ktx.txState().constraintsChangesForLabel( labelId ).apply( constraints );
@@ -646,25 +761,31 @@ public class AllStoreHolder extends Read
     public Iterator<ConstraintDescriptor> constraintsGetAll()
     {
         ktx.assertOpen();
-        Iterator<ConstraintDescriptor> constraints = storageReader.constraintsGetAll();
+        Iterator<ConstraintDescriptor> constraints = constraintsGetAll( storageReader );
+        return Iterators.map( this::lockConstraint, constraints );
+    }
+
+    Iterator<ConstraintDescriptor> constraintsGetAll( StorageSchemaReader reader )
+    {
+        Iterator<ConstraintDescriptor> constraints = reader.constraintsGetAll();
         if ( ktx.hasTxStateWithChanges() )
         {
             constraints = ktx.txState().constraintsChanges().apply( constraints );
         }
-        return Iterators.map( constraintDescriptor ->
-        {
-            SchemaDescriptor schema = constraintDescriptor.schema();
-            ktx.statementLocks().pessimistic().acquireShared( ktx.lockTracer(), schema.keyType(), schema.keyId() );
-            return constraintDescriptor;
-        }, constraints );
+        return constraints;
     }
 
     @Override
     public Iterator<ConstraintDescriptor> constraintsGetForRelationshipType( int typeId )
     {
-        sharedOptimisticLock( ResourceTypes.RELATIONSHIP_TYPE, typeId );
+        acquireSharedLock( ResourceTypes.RELATIONSHIP_TYPE, typeId );
         ktx.assertOpen();
-        Iterator<ConstraintDescriptor> constraints = storageReader.constraintsGetForRelationshipType( typeId );
+        return constraintsGetForRelationshipType( storageReader, typeId );
+    }
+
+    Iterator<ConstraintDescriptor> constraintsGetForRelationshipType( StorageSchemaReader reader, int typeId )
+    {
+        Iterator<ConstraintDescriptor> constraints = reader.constraintsGetForRelationshipType( typeId );
         if ( ktx.hasTxStateWithChanges() )
         {
             return ktx.txState().constraintsChangesForRelationshipType( typeId ).apply( constraints );
@@ -673,128 +794,11 @@ public class AllStoreHolder extends Read
     }
 
     @Override
-    PageCursor nodePage( long reference )
+    public SchemaReadCore snapshot()
     {
-        return nodes.openPageCursorForReading( reference );
-    }
-
-    @Override
-    PageCursor relationshipPage( long reference )
-    {
-        return relationships.openPageCursorForReading( reference );
-    }
-
-    @Override
-    PageCursor groupPage( long reference )
-    {
-        return groups.openPageCursorForReading( reference );
-    }
-
-    @Override
-    PageCursor propertyPage( long reference )
-    {
-        return properties.openPageCursorForReading( reference );
-    }
-
-    @Override
-    PageCursor stringPage( long reference )
-    {
-        return properties.openStringPageCursor( reference );
-    }
-
-    @Override
-    PageCursor arrayPage( long reference )
-    {
-        return properties.openArrayPageCursor( reference );
-    }
-
-    @Override
-    RecordCursor<DynamicRecord> labelCursor()
-    {
-        return nodes.newLabelCursor();
-    }
-
-    @Override
-    void node( NodeRecord record, long reference, PageCursor pageCursor )
-    {
-        nodes.getRecordByCursor( reference, record, RecordLoad.CHECK, pageCursor );
-    }
-
-    @Override
-    void nodeAdvance( NodeRecord record, PageCursor pageCursor )
-    {
-        nodes.nextRecordByCursor( record, RecordLoad.CHECK, pageCursor );
-    }
-
-    @Override
-    void relationship( RelationshipRecord record, long reference, PageCursor pageCursor )
-    {
-        // When scanning, we inspect RelationshipRecord.inUse(), so using RecordLoad.CHECK is fine
-        relationships.getRecordByCursor( reference, record, RecordLoad.CHECK, pageCursor );
-    }
-
-    @Override
-    void relationshipAdvance( RelationshipRecord record, PageCursor pageCursor )
-    {
-        // When scanning, we inspect RelationshipRecord.inUse(), so using RecordLoad.CHECK is fine
-        relationships.nextRecordByCursor( record, RecordLoad.CHECK, pageCursor );
-    }
-
-    @Override
-    void relationshipFull( RelationshipRecord record, long reference, PageCursor pageCursor )
-    {
-        // We need to load forcefully for relationship chain traversal since otherwise we cannot
-        // traverse over relationship records which have been concurrently deleted
-        // (flagged as inUse = false).
-        // see
-        //      org.neo4j.kernel.impl.store.RelationshipChainPointerChasingTest
-        //      org.neo4j.kernel.impl.locking.RelationshipCreateDeleteIT
-        relationships.getRecordByCursor( reference, record, RecordLoad.FORCE, pageCursor );
-    }
-
-    @Override
-    void property( PropertyRecord record, long reference, PageCursor pageCursor )
-    {
-        // We need to load forcefully here since otherwise we can have inconsistent reads
-        // for properties across blocks, see org.neo4j.graphdb.ConsistentPropertyReadsIT
-        properties.getRecordByCursor( reference, record, RecordLoad.FORCE, pageCursor );
-    }
-
-    @Override
-    void group( RelationshipGroupRecord record, long reference, PageCursor page )
-    {
-        // We need to load forcefully here since otherwise we cannot traverse over groups
-        // records which have been concurrently deleted (flagged as inUse = false).
-        // @see #org.neo4j.kernel.impl.store.RelationshipChainPointerChasingTest
-        groups.getRecordByCursor( reference, record, RecordLoad.FORCE, page );
-    }
-
-    @Override
-    long nodeHighMark()
-    {
-        return nodes.getHighestPossibleIdInUse();
-    }
-
-    @Override
-    long relationshipHighMark()
-    {
-        return relationships.getHighestPossibleIdInUse();
-    }
-
-    @Override
-    TextValue string( DefaultPropertyCursor cursor, long reference, PageCursor page )
-    {
-        ByteBuffer buffer = cursor.buffer = properties.loadString( reference, cursor.buffer, page );
-        buffer.flip();
-        return Values.stringValue( UTF8.decode( buffer.array(), 0, buffer.limit() ) );
-    }
-
-    @Override
-    ArrayValue array( DefaultPropertyCursor cursor, long reference, PageCursor page )
-    {
-        ByteBuffer buffer = cursor.buffer = properties.loadArray( reference, cursor.buffer, page );
-        buffer.flip();
-        return PropertyStore.readArrayFromBuffer( buffer );
+        ktx.assertOpen();
+        StorageSchemaReader snapshot = storageReader.schemaSnapshot();
+        return new SchemaReadCoreSnapshot( snapshot, ktx, this );
     }
 
     boolean nodeExistsInStore( long id )
@@ -832,7 +836,7 @@ public class AllStoreHolder extends Read
     }
 
     @Override
-    public Set<ProcedureSignature> proceduresGetAll( ) throws ProcedureException
+    public Set<ProcedureSignature> proceduresGetAll( )
     {
         ktx.assertOpen();
         return procedures.getAllProcedures();
@@ -855,8 +859,7 @@ public class AllStoreHolder extends Read
             throw accessMode.onViolation( format( "Read operations are not allowed for %s.",
                     ktx.securityContext().description() ) );
         }
-        return callProcedure( id, arguments, new RestrictedAccessMode( ktx.securityContext().mode(), AccessMode.Static
-                .READ ) );
+        return callProcedure( id, arguments, new RestrictedAccessMode( ktx.securityContext().mode(), AccessMode.Static.READ ) );
     }
 
     @Override
@@ -1069,12 +1072,6 @@ public class AllStoreHolder extends Read
     }
 
     @Override
-    public <K, V> V schemaStateGet( K key )
-    {
-        return schemaState.get( key );
-    }
-
-    @Override
     public void schemaStateFlush()
     {
         schemaState.clear();
@@ -1097,7 +1094,7 @@ public class AllStoreHolder extends Read
               Statement statement = ktx.acquireStatement() )
         {
             procedureCall = procedures
-                    .callProcedure( populateProcedureContext( procedureSecurityContext ), id, input, statement );
+                    .callProcedure( prepareContext( procedureSecurityContext ), id, input, statement );
         }
         return createIterator( procedureSecurityContext, procedureCall );
     }
@@ -1114,7 +1111,7 @@ public class AllStoreHolder extends Read
               Statement statement = ktx.acquireStatement() )
         {
             procedureCall = procedures
-                    .callProcedure( populateProcedureContext( procedureSecurityContext ), name, input, statement );
+                    .callProcedure( prepareContext( procedureSecurityContext ), name, input, statement );
         }
         return createIterator( procedureSecurityContext, procedureCall );
     }
@@ -1148,9 +1145,10 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
 
-        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( ktx.securityContext().withMode( mode ) ) )
+        SecurityContext securityContext = ktx.securityContext().withMode( mode );
+        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( securityContext ) )
         {
-            return procedures.callFunction( populateFunctionContext(), id, input );
+            return procedures.callFunction( prepareContext( securityContext ), id, input );
         }
     }
 
@@ -1159,9 +1157,10 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
 
-        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( ktx.securityContext().withMode( mode ) ) )
+        SecurityContext securityContext = ktx.securityContext().withMode( mode );
+        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( securityContext ) )
         {
-            return procedures.callFunction( populateFunctionContext(), name, input );
+            return procedures.callFunction( prepareContext( securityContext ), name, input );
         }
     }
 
@@ -1170,9 +1169,10 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
 
-        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( ktx.securityContext().withMode( mode ) ) )
+        SecurityContext securityContext = ktx.securityContext().withMode( mode );
+        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( securityContext ) )
         {
-            return procedures.createAggregationFunction( populateAggregationContext(), id );
+            return procedures.createAggregationFunction( prepareContext( securityContext ), id );
         }
     }
 
@@ -1181,46 +1181,40 @@ public class AllStoreHolder extends Read
     {
         ktx.assertOpen();
 
-        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( ktx.securityContext().withMode( mode ) ) )
+        SecurityContext securityContext = ktx.securityContext().withMode( mode );
+        try ( KernelTransaction.Revertable ignore = ktx.overrideWith( securityContext ) )
         {
-            return procedures.createAggregationFunction( populateAggregationContext(), name );
+            return procedures.createAggregationFunction( prepareContext( securityContext ), name );
         }
     }
 
-    private BasicContext populateFunctionContext()
+    private BasicContext prepareContext( SecurityContext securityContext )
     {
         BasicContext ctx = new BasicContext();
         ctx.put( Context.KERNEL_TRANSACTION, ktx );
+        ctx.put( Context.DATABASE_API, dataSourceDependencies.resolveDependency( GraphDatabaseAPI.class ) );
+        ctx.put( Context.DEPENDENCY_RESOLVER, dataSourceDependencies );
         ctx.put( Context.THREAD, Thread.currentThread() );
         ClockContext clocks = ktx.clocks();
         ctx.put( Context.SYSTEM_CLOCK, clocks.systemClock() );
         ctx.put( Context.STATEMENT_CLOCK, clocks.statementClock() );
         ctx.put( Context.TRANSACTION_CLOCK, clocks.transactionClock() );
+        ctx.put( Context.SECURITY_CONTEXT, securityContext );
         return ctx;
     }
 
-    private BasicContext populateAggregationContext()
-    {
-        BasicContext ctx = new BasicContext();
-        ctx.put( Context.KERNEL_TRANSACTION, ktx );
-        ctx.put( Context.THREAD, Thread.currentThread() );
-        return ctx;
-    }
-
-    private BasicContext populateProcedureContext( SecurityContext procedureSecurityContext )
-    {
-        BasicContext ctx = new BasicContext();
-        ctx.put( Context.KERNEL_TRANSACTION, ktx );
-        ctx.put( Context.THREAD, Thread.currentThread() );
-        ctx.put( Context.SECURITY_CONTEXT, procedureSecurityContext );
-        return ctx;
-    }
-
-    private void assertValidIndex( IndexReference index ) throws IndexNotFoundKernelException
+    static void assertValidIndex( IndexReference index ) throws IndexNotFoundKernelException
     {
         if ( index == IndexReference.NO_INDEX )
         {
             throw new IndexNotFoundKernelException( "No index was found" );
         }
+    }
+
+    private ConstraintDescriptor lockConstraint( ConstraintDescriptor constraint )
+    {
+        SchemaDescriptor schema = constraint.schema();
+        ktx.statementLocks().pessimistic().acquireShared( ktx.lockTracer(), schema.keyType(), schema.keyId() );
+        return constraint;
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -305,14 +305,14 @@ class ReflectiveProcedureCompiler
                 description = describeAndLogLoadFailure( procName );
                 ProcedureSignature signature =
                         new ProcedureSignature( procName, inputSignature, outputMapper.signature(), Mode.DEFAULT,
-                                admin, null, new String[0], description, warning, false );
+                                admin, null, new String[0], description, warning, procedure.eager(), false );
                 return new FailedLoadProcedure( signature );
             }
         }
 
         ProcedureSignature signature =
                 new ProcedureSignature( procName, inputSignature, outputMapper.signature(), mode, admin, deprecated,
-                        config.rolesFor( procName.toString() ), description, warning, false );
+                        config.rolesFor( procName.toString() ), description, warning, procedure.eager(), false );
         return new ReflectiveProcedure( signature, constructor, method, outputMapper, setters );
     }
 
@@ -735,9 +735,9 @@ class ReflectiveProcedureCompiler
                     Resource resourceToClose = closeableResource;
                     closeableResource = null;
 
-                    IOUtils.closeAll( ResourceCloseFailureException.class,
+                    IOUtils.close( ResourceCloseFailureException::new,
                             () -> resourceTracker.unregisterCloseableResource( resourceToClose ),
-                            resourceToClose::close );
+                            resourceToClose );
                 }
             }
 

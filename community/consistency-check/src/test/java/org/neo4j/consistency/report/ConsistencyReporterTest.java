@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -52,13 +52,12 @@ import org.neo4j.consistency.store.RecordReference;
 import org.neo4j.consistency.store.synthetic.CountsEntry;
 import org.neo4j.consistency.store.synthetic.IndexEntry;
 import org.neo4j.consistency.store.synthetic.LabelScanDocument;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
-import org.neo4j.kernel.api.index.IndexProvider;
 import org.neo4j.kernel.api.labelscan.NodeLabelRange;
-import org.neo4j.kernel.api.schema.index.IndexDescriptorFactory;
+import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
 import org.neo4j.kernel.impl.store.record.NeoStoreRecord;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
@@ -68,7 +67,9 @@ import org.neo4j.kernel.impl.store.record.PropertyRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 import static java.lang.String.format;
 import static org.hamcrest.Matchers.containsString;
@@ -84,6 +85,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.hamcrest.MockitoHamcrest.argThat;
 import static org.neo4j.consistency.report.ConsistencyReporter.NO_MONITOR;
+import static org.neo4j.internal.kernel.api.schema.SchemaUtil.idTokenNameLookup;
 import static org.neo4j.kernel.api.schema.SchemaDescriptorFactory.forLabel;
 import static org.neo4j.kernel.impl.store.counts.keys.CountsKeyFactory.nodeKey;
 
@@ -378,7 +380,7 @@ public class ConsistencyReporterTest
             }
             if ( type == IndexEntry.class )
             {
-                return new IndexEntry( 0 );
+                return new IndexEntry( IndexDescriptorFactory.forSchema( SchemaDescriptorFactory.forLabel( 1, 1 ) ).withId( 1L ), idTokenNameLookup, 0 );
             }
             if ( type == CountsEntry.class )
             {
@@ -390,7 +392,7 @@ public class ConsistencyReporterTest
             }
             if ( type == StoreIndexDescriptor.class )
             {
-                return IndexDescriptorFactory.forSchema( forLabel( 2, 3 ), IndexProvider.UNDECIDED ).withId( 1 );
+                return IndexDescriptorFactory.forSchema( forLabel( 2, 3 ), IndexProviderDescriptor.UNDECIDED ).withId( 1 );
             }
             if ( type == SchemaRule.class )
             {
@@ -411,7 +413,7 @@ public class ConsistencyReporterTest
             throw new IllegalArgumentException( format( "Don't know how to provide parameter of type %s", type.getName() ) );
         }
 
-        private SchemaRule simpleSchemaRule()
+        private static SchemaRule simpleSchemaRule()
         {
             return new SchemaRule()
             {

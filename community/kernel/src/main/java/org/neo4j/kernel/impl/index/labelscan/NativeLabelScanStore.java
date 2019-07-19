@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -37,6 +37,7 @@ import org.neo4j.index.internal.gbptree.Layout;
 import org.neo4j.index.internal.gbptree.MetadataMismatchException;
 import org.neo4j.index.internal.gbptree.RecoveryCleanupWorkCollector;
 import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.io.layout.DatabaseLayout;
 import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.PageCursor;
@@ -44,15 +45,11 @@ import org.neo4j.kernel.api.labelscan.AllEntriesLabelScanReader;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.api.labelscan.LabelScanWriter;
 import org.neo4j.kernel.impl.api.scan.FullStoreChangeStream;
-import org.neo4j.kernel.impl.store.UnderlyingStorageException;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.storageengine.api.schema.LabelScanReader;
 
-import static org.neo4j.helpers.Format.duration;
 import static org.neo4j.helpers.collection.Iterators.asResourceIterator;
 import static org.neo4j.helpers.collection.Iterators.iterator;
-import static org.neo4j.helpers.collection.MapUtil.map;
-import static org.neo4j.kernel.impl.store.MetaDataStore.DEFAULT_NAME;
 
 /**
  * {@link LabelScanStore} which is implemented using {@link GBPTree} atop a {@link PageCache}.
@@ -78,11 +75,6 @@ import static org.neo4j.kernel.impl.store.MetaDataStore.DEFAULT_NAME;
  */
 public class NativeLabelScanStore implements LabelScanStore
 {
-    /**
-     * Name of the file used for the native label scan store.
-     */
-    public static final String FILE_NAME = DEFAULT_NAME + ".labelscanstore.db";
-
     /**
      * Written in header to indicate native label scan store is clean
      */
@@ -126,6 +118,11 @@ public class NativeLabelScanStore implements LabelScanStore
     private final FullStoreChangeStream fullStoreChangeStream;
 
     /**
+     * {@link FileSystemAbstraction} the backing file lives on.
+     */
+    private final FileSystemAbstraction fs;
+
+    /**
      * Page size to use for each tree node in {@link GBPTree}. Passed to {@link GBPTree}.
      */
     private final int pageSize;
@@ -134,6 +131,11 @@ public class NativeLabelScanStore implements LabelScanStore
      * Used for all file operations on the gbpTree file.
      */
     private final FileSystemAbstraction fileSystem;
+
+    /**
+     * Layout of the database.
+     */
+    private final DatabaseLayout directoryStructure;
 
     /**
      * The index which backs this label scan store. Instantiated in {@link #init()} and considered
@@ -155,7 +157,12 @@ public class NativeLabelScanStore implements LabelScanStore
     /**
      * The single instance of {@link NativeLabelScanWriter} used for updates.
      */
-    private final NativeLabelScanWriter singleWriter;
+    private NativeLabelScanWriter singleWriter;
+
+    /**
+     * Monitor for all writes going into this label scan store.
+     */
+    private NativeLabelScanWriter.WriteMonitor writeMonitor;
 
     /**
      * Write rebuilding bit to header.
@@ -168,25 +175,26 @@ public class NativeLabelScanStore implements LabelScanStore
      */
     private static final Consumer<PageCursor> writeClean = pageCursor -> pageCursor.putByte( CLEAN );
 
-    public NativeLabelScanStore( PageCache pageCache, File storeDir, FileSystemAbstraction fs, FullStoreChangeStream fullStoreChangeStream,
+    public NativeLabelScanStore( PageCache pageCache, DatabaseLayout directoryStructure, FileSystemAbstraction fs, FullStoreChangeStream fullStoreChangeStream,
             boolean readOnly, Monitors monitors, RecoveryCleanupWorkCollector recoveryCleanupWorkCollector )
     {
-        this( pageCache, storeDir, fs, fullStoreChangeStream, readOnly, monitors, recoveryCleanupWorkCollector,
+        this( pageCache, directoryStructure, fs, fullStoreChangeStream, readOnly, monitors, recoveryCleanupWorkCollector,
                 /*means no opinion about page size*/ 0 );
     }
 
     /*
      * Test access to be able to control page size.
      */
-    NativeLabelScanStore( PageCache pageCache, File storeDir, FileSystemAbstraction fs,
+    NativeLabelScanStore( PageCache pageCache, DatabaseLayout directoryStructure, FileSystemAbstraction fs,
                 FullStoreChangeStream fullStoreChangeStream, boolean readOnly, Monitors monitors,
                 RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, int pageSize )
     {
         this.pageCache = pageCache;
+        this.fs = fs;
         this.pageSize = pageSize;
         this.fullStoreChangeStream = fullStoreChangeStream;
-        this.storeFile = getLabelScanStoreFile( storeDir );
-        this.singleWriter = new NativeLabelScanWriter( 1_000 );
+        this.directoryStructure = directoryStructure;
+        this.storeFile = getLabelScanStoreFile( directoryStructure );
         this.readOnly = readOnly;
         this.monitors = monitors;
         this.monitor = monitors.newMonitor( Monitor.class );
@@ -197,12 +205,12 @@ public class NativeLabelScanStore implements LabelScanStore
     /**
      * Returns the file backing the label scan store.
      *
-     * @param storeDir The store directory to use.
+     * @param directoryStructure The store directory to use.
      * @return the file backing the label scan store
      */
-    public static File getLabelScanStoreFile( File storeDir )
+    public static File getLabelScanStoreFile( DatabaseLayout directoryStructure )
     {
-        return new File( storeDir, FILE_NAME );
+        return directoryStructure.labelScanStore();
     }
 
     /**
@@ -249,19 +257,12 @@ public class NativeLabelScanStore implements LabelScanStore
      * and non-clean shutdown will be applied again on next startup.
      *
      * @param limiter {@link IOLimiter}.
-     * @throws UnderlyingStorageException on failure writing changes to {@link PageCache}.
      */
     @Override
-    public void force( IOLimiter limiter ) throws UnderlyingStorageException
+    public void force( IOLimiter limiter )
     {
-        try
-        {
-            index.checkpoint( limiter );
-        }
-        catch ( IOException e )
-        {
-            throw new UnderlyingStorageException( e );
-        }
+        index.checkpoint( limiter );
+        writeMonitor.force();
     }
 
     @Override
@@ -335,6 +336,9 @@ public class NativeLabelScanStore implements LabelScanStore
             isDirty = true;
         }
 
+        writeMonitor = LabelScanWriteMonitor.ENABLED ? new LabelScanWriteMonitor( fs, directoryStructure ) : NativeLabelScanWriter.EMPTY;
+        singleWriter = new NativeLabelScanWriter( 1_000, writeMonitor );
+
         if ( isDirty )
         {
             monitor.notValidIndex();
@@ -376,18 +380,7 @@ public class NativeLabelScanStore implements LabelScanStore
 
     private GBPTree.Monitor treeMonitor()
     {
-        return new GBPTree.Monitor.Adaptor()
-        {
-            @Override
-            public void cleanupFinished( long numberOfPagesVisited, long numberOfCleanedCrashPointers,
-                    long durationMillis )
-            {
-                monitor.recoveryCompleted( map(
-                        "Number of pages visited", numberOfPagesVisited,
-                        "Number of cleaned crashed pointers", numberOfCleanedCrashPointers,
-                        "Time spent", duration( durationMillis ) ) );
-            }
-        };
+        return new LabelIndexTreeMonitor();
     }
 
     @Override
@@ -433,7 +426,7 @@ public class NativeLabelScanStore implements LabelScanStore
                 numberOfNodes = fullStoreChangeStream.applyTo( writer );
             }
 
-            index.checkpoint( IOLimiter.unlimited(), writeClean );
+            index.checkpoint( IOLimiter.UNLIMITED, writeClean );
 
             monitor.rebuilt( numberOfNodes );
             needsRebuild = false;
@@ -473,6 +466,7 @@ public class NativeLabelScanStore implements LabelScanStore
         {
             index.close();
             index = null;
+            writeMonitor.close();
         }
     }
 
@@ -485,5 +479,38 @@ public class NativeLabelScanStore implements LabelScanStore
     public boolean isDirty()
     {
         return index == null || index.wasDirtyOnStartup();
+    }
+
+    private class LabelIndexTreeMonitor extends GBPTree.Monitor.Adaptor
+    {
+        @Override
+        public void cleanupRegistered()
+        {
+            monitor.recoveryCleanupRegistered();
+        }
+
+        @Override
+        public void cleanupStarted()
+        {
+            monitor.recoveryCleanupStarted();
+        }
+
+        @Override
+        public void cleanupFinished( long numberOfPagesVisited, long numberOfCleanedCrashPointers, long durationMillis )
+        {
+            monitor.recoveryCleanupFinished( numberOfPagesVisited, numberOfCleanedCrashPointers, durationMillis );
+        }
+
+        @Override
+        public void cleanupClosed()
+        {
+            monitor.recoveryCleanupClosed();
+        }
+
+        @Override
+        public void cleanupFailed( Throwable throwable )
+        {
+            monitor.recoveryCleanupFailed( throwable );
+        }
     }
 }

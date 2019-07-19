@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,12 +20,11 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.plans.rewriter
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport
-import org.opencypher.v9_0.util.helpers.fixedPoint
+import org.neo4j.cypher.internal.v3_5.util.helpers.fixedPoint
 import org.neo4j.cypher.internal.ir.v3_5.VarPatternLength
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Solveds
-import org.opencypher.v9_0.util.attribution.Attributes
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions.SemanticDirection
+import org.neo4j.cypher.internal.v3_5.util.attribution.Attributes
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.expressions.SemanticDirection
 import org.neo4j.cypher.internal.v3_5.logical.plans._
 
 class UnnestApplyTest extends CypherFunSuite with LogicalPlanningTestSupport {
@@ -74,6 +73,25 @@ class UnnestApplyTest extends CypherFunSuite with LogicalPlanningTestSupport {
 
     rewrite(input) should equal(
       LeftOuterHashJoin(Set("a"), lhs, rhs)
+    )
+  }
+
+  test("should unnest optional expand") {
+    /*
+           Apply
+         LHS  OptionalExpand
+                  Arg
+     */
+    val argPlan = Argument(Set("a"))
+    val lhs = newMockedLogicalPlan("a")
+
+    val input =
+      Apply(lhs,
+        OptionalExpand(argPlan, "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r")
+      )
+
+    rewrite(input) should equal(
+      OptionalExpand(lhs, "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r")
     )
   }
 

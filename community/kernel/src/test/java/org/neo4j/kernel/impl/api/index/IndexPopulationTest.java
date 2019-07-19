@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -30,17 +30,20 @@ import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexEntryUpdate;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.index.PropertyAccessor;
+import org.neo4j.storageengine.api.NodePropertyAccessor;
 import org.neo4j.kernel.api.labelscan.NodeLabelUpdate;
 import org.neo4j.kernel.api.schema.LabelSchemaDescriptor;
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
+import org.neo4j.kernel.impl.api.SchemaState;
 import org.neo4j.logging.NullLogProvider;
+import org.neo4j.storageengine.api.EntityType;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
 import org.neo4j.storageengine.api.schema.PopulationProgress;
 import org.neo4j.values.storable.Values;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertSame;
+import static org.mockito.Mockito.mock;
 
 public class IndexPopulationTest
 {
@@ -55,17 +58,19 @@ public class IndexPopulationTest
         OnlineIndexProxy onlineProxy = onlineIndexProxy( storeView );
         FlippableIndexProxy flipper = new FlippableIndexProxy();
         flipper.setFlipTarget( () -> onlineProxy );
-        MultipleIndexPopulator multipleIndexPopulator = new MultipleIndexPopulator( storeView, logProvider );
+        MultipleIndexPopulator multipleIndexPopulator =
+                new MultipleIndexPopulator( storeView, logProvider, EntityType.NODE, mock( SchemaState.class ) );
+
         MultipleIndexPopulator.IndexPopulation indexPopulation =
                 multipleIndexPopulator.addPopulator( populator, dummyMeta(), flipper, t -> failedProxy, "userDescription" );
         multipleIndexPopulator.queueUpdate( someUpdate() );
-        multipleIndexPopulator.indexAllNodes().run();
+        multipleIndexPopulator.indexAllEntities().run();
 
         // when
-        indexPopulation.flip();
+        indexPopulation.flip( false );
 
         // then
-        assertTrue( "flipper should have flipped to failing proxy", flipper.getState() == InternalIndexState.FAILED );
+        assertSame( "flipper should have flipped to failing proxy", flipper.getState(), InternalIndexState.FAILED );
     }
 
     private OnlineIndexProxy onlineIndexProxy( IndexStoreView storeView )
@@ -84,7 +89,7 @@ public class IndexPopulationTest
         return new IndexPopulator.Adapter()
         {
             @Override
-            public IndexUpdater newPopulatingUpdater( PropertyAccessor accessor )
+            public IndexUpdater newPopulatingUpdater( NodePropertyAccessor accessor )
             {
                 return new IndexUpdater()
                 {
@@ -109,7 +114,7 @@ public class IndexPopulationTest
         {
             @Override
             public <FAILURE extends Exception> StoreScan<FAILURE> visitNodes( int[] labelIds, IntPredicate propertyKeyIdFilter,
-                    Visitor<NodeUpdates,FAILURE> propertyUpdateVisitor, Visitor<NodeLabelUpdate,FAILURE> labelUpdateVisitor, boolean forceStoreScan )
+                    Visitor<EntityUpdates,FAILURE> propertyUpdateVisitor, Visitor<NodeLabelUpdate,FAILURE> labelUpdateVisitor, boolean forceStoreScan )
             {
                 //noinspection unchecked
                 return new StoreScan()
@@ -126,15 +131,18 @@ public class IndexPopulationTest
                     }
 
                     @Override
-                    public PopulationProgress getProgress()
+                    public void acceptUpdate( MultipleIndexPopulator.MultipleIndexUpdater updater, IndexEntryUpdate update, long currentlyIndexedNodeId )
                     {
-                        return null;
+                        if ( update.getEntityId() <= currentlyIndexedNodeId )
+                        {
+                            updater.process( update );
+                        }
                     }
 
                     @Override
-                    public void acceptUpdate( MultipleIndexPopulator.MultipleIndexUpdater updater, IndexEntryUpdate update, long currentlyIndexedNodeId )
+                    public PopulationProgress getProgress()
                     {
-                        updater.process( update );
+                        return null;
                     }
                 };
             }

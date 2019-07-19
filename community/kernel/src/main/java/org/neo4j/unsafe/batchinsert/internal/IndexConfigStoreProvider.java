@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,8 +26,11 @@ import org.neo4j.unsafe.batchinsert.BatchInserterIndexProvider;
 /**
  * Provider of index store for batch inserter index providers
  * @see BatchInserterIndexProvider
+ * @deprecated This API will be removed in next major release. Please consider using schema indexes instead.
  */
+@Deprecated
 public interface IndexConfigStoreProvider
 {
+    @Deprecated
     IndexConfigStore getIndexStore();
 }

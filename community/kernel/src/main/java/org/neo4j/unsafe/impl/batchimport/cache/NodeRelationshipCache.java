@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -29,7 +29,6 @@ import org.neo4j.unsafe.impl.batchimport.cache.idmapping.string.BigIdTracker;
 import static java.lang.Long.min;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
-
 import static org.neo4j.helpers.Numbers.safeCastIntToUnsignedShort;
 import static org.neo4j.helpers.Numbers.unsignedShortToInt;
 
@@ -92,7 +91,7 @@ public class NodeRelationshipCache implements MemoryStatsVisitor.Visitable, Auto
     private final RelGroupCache relGroupCache;
     private long highNodeId;
     // This cache participates in scans backwards and forwards, marking entities as changed in the process.
-    // When going forward (forward==true) changes are marked with a set bit, a cleared bit when going bachwards.
+    // When going forward (forward==true) changes are marked with a set bit, a cleared bit when going backwards.
     // This way there won't have to be a clearing of the change bits in between the scans.
     private volatile boolean forward = true;
     private final int chunkSize;
@@ -239,11 +238,6 @@ public class NodeRelationshipCache implements MemoryStatsVisitor.Visitable, Auto
         this.highNodeId = nodeCount;
         this.array = arrayFactory.newByteArray( highNodeId, minusOneBytes( ID_AND_COUNT_SIZE ) );
         this.chunkChangedArray = new byte[chunkOf( nodeCount ) + 1];
-    }
-
-    public long getHighNodeId()
-    {
-        return this.highNodeId;
     }
 
     /**
@@ -769,6 +763,7 @@ public class NodeRelationshipCache implements MemoryStatsVisitor.Visitable, Auto
         return array.toString();
     }
 
+    @Override
     public void close()
     {
         if ( array != null )

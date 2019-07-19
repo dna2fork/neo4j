@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -29,19 +29,19 @@ import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
 import org.neo4j.kernel.impl.store.id.IdType;
 import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.logging.LogProvider;
-import org.neo4j.storageengine.api.StorageReader;
 
 import static org.neo4j.kernel.impl.store.NoStoreHeaderFormat.NO_STORE_HEADER_FORMAT;
 
 /**
  * Implementation of the relationship store.
  */
-public class RelationshipStore extends CommonAbstractStore<RelationshipRecord,NoStoreHeader> implements StorageReader.Relationships
+public class RelationshipStore extends CommonAbstractStore<RelationshipRecord,NoStoreHeader>
 {
     public static final String TYPE_DESCRIPTOR = "RelationshipStore";
 
     public RelationshipStore(
-            File fileName,
+            File file,
+            File idFile,
             Config configuration,
             IdGeneratorFactory idGeneratorFactory,
             PageCache pageCache,
@@ -49,7 +49,7 @@ public class RelationshipStore extends CommonAbstractStore<RelationshipRecord,No
             RecordFormats recordFormats,
             OpenOption... openOptions )
     {
-        super( fileName, configuration, IdType.RELATIONSHIP, idGeneratorFactory,
+        super( file, idFile, configuration, IdType.RELATIONSHIP, idGeneratorFactory,
                 pageCache, logProvider, TYPE_DESCRIPTOR, recordFormats.relationship(), NO_STORE_HEADER_FORMAT,
                 recordFormats.storeVersion(), openOptions );
     }

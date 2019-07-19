@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,9 +21,10 @@ package org.neo4j.bolt.v1.runtime;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-import org.neo4j.bolt.v1.runtime.spi.BoltResult;
+import org.neo4j.bolt.runtime.BoltResult;
 import org.neo4j.cypher.result.QueryResult;
 import org.neo4j.graphdb.ExecutionPlanDescription;
 import org.neo4j.graphdb.InputPosition;
@@ -40,13 +41,13 @@ import static org.neo4j.values.storable.Values.intValue;
 import static org.neo4j.values.storable.Values.longValue;
 import static org.neo4j.values.storable.Values.stringValue;
 
-class CypherAdapterStream extends BoltResult
+public class CypherAdapterStream implements BoltResult
 {
     private final QueryResult delegate;
     private final String[] fieldNames;
     private final Clock clock;
 
-    CypherAdapterStream( QueryResult delegate, Clock clock )
+    public CypherAdapterStream( QueryResult delegate, Clock clock )
     {
         this.delegate = delegate;
         this.fieldNames = delegate.fieldNames();
@@ -74,7 +75,7 @@ class CypherAdapterStream extends BoltResult
             visitor.visit( row );
             return true;
         } );
-        visitor.addMetadata( "result_consumed_after", longValue( clock.millis() - start ) );
+        addRecordStreamingTime( visitor, clock.millis() - start );
         QueryExecutionType qt = delegate.executionType();
         visitor.addMetadata( "type", Values.stringValue( queryTypeCode( qt.queryType() ) ) );
 
@@ -95,6 +96,17 @@ class CypherAdapterStream extends BoltResult
         {
             visitor.addMetadata( "notifications", NotificationConverter.convert( notifications ) );
         }
+    }
+
+    protected void addRecordStreamingTime( Visitor visitor, long time )
+    {
+        visitor.addMetadata( "result_consumed_after", longValue( time ) );
+    }
+
+    @Override
+    public String toString()
+    {
+        return "CypherAdapterStream{" + "delegate=" + delegate + ", fieldNames=" + Arrays.toString( fieldNames ) + '}';
     }
 
     private MapValue queryStats( QueryStatistics queryStatistics )

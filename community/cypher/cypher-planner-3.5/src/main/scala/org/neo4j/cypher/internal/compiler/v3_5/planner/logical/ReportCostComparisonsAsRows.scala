@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,12 +22,13 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 import org.neo4j.cypher.internal.compiler.v3_5.phases.LogicalPlanState
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps.CostComparisonListener
 import org.neo4j.cypher.internal.ir.v3_5.PlannerQuery
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.{Cardinalities, Solveds}
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.{Cardinalities, ProvidedOrders, Solveds}
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.ast._
-import org.opencypher.v9_0.expressions._
-import org.opencypher.v9_0.util.attribution.{Id, SequentialIdGen}
-import org.opencypher.v9_0.util.{Cardinality, Cost, InputPosition}
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.attribution.{Id, SequentialIdGen}
+import org.neo4j.cypher.internal.v3_5.util.{Cardinality, Cost, InputPosition}
 
 import scala.collection.{immutable, mutable}
 
@@ -53,9 +54,7 @@ class ReportCostComparisonsAsRows extends CostComparisonListener {
   override def report[X](projector: X => LogicalPlan,
                          input: Iterable[X],
                          inputOrdering: Ordering[X],
-                         context: LogicalPlanningContext,
-                         solveds: Solveds,
-                         cardinalities: Cardinalities): Unit = if (input.size > 1) {
+                         context: LogicalPlanningContext): Unit = if (input.size > 1) {
 
     def stringTo(level: Int, plan: LogicalPlan): String = {
       def indent(level: Int, in: String): String = level match {
@@ -63,21 +62,21 @@ class ReportCostComparisonsAsRows extends CostComparisonListener {
         case _ => System.lineSeparator() + "  " * level + in
       }
 
-      val cost = context.cost(plan, context.input, cardinalities)
-      val thisPlan = indent(level, s"${plan.getClass.getSimpleName} costs $cost cardinality ${cardinalities.get(plan.id)}")
+      val cost = context.cost(plan, context.input, context.planningAttributes.cardinalities)
+      val thisPlan = indent(level, s"${plan.getClass.getSimpleName} costs $cost cardinality ${context.planningAttributes.cardinalities.get(plan.id)}")
       val l = plan.lhs.map(p => stringTo(level + 1, p)).getOrElse("")
       val r = plan.rhs.map(p => stringTo(level + 1, p)).getOrElse("")
       thisPlan + l + r
     }
 
-    val sortedPlans = input.toIndexedSeq.sorted(inputOrdering.reverse).map(projector)
+    val sortedPlans = input.toIndexedSeq.sorted(inputOrdering).map(projector).reverse
     val winner = sortedPlans.last
 
     val theseRows: immutable.Seq[Row] = sortedPlans.map { plan =>
       val planText = plan.toString.replaceAll(System.lineSeparator(), System.lineSeparator())
       val planTextWithCosts = stringTo(0, plan).replaceAll(System.lineSeparator(), System.lineSeparator())
-      val cost = context.cost(plan, context.input, cardinalities)
-      val cardinality = cardinalities.get(plan.id)
+      val cost = context.cost(plan, context.input, context.planningAttributes.cardinalities)
+      val cardinality = context.planningAttributes.cardinalities.get(plan.id)
 
       Row(comparisonCount, plan.id, planText, planTextWithCosts, cost, cardinality, winner.id == plan.id)
     }
@@ -94,6 +93,7 @@ class ReportCostComparisonsAsRows extends CostComparisonListener {
     val newStatement = asStatement()
     val solveds = new Solveds
     val cardinalities = new Cardinalities
+    val providedOrders = new ProvidedOrders
 
     var current: Option[LogicalPlan] = Some(plan)
     do {
@@ -103,7 +103,7 @@ class ReportCostComparisonsAsRows extends CostComparisonListener {
       current = current.get.lhs
     } while (current.nonEmpty)
 
-    in.copy(maybePeriodicCommit = Some(None), maybeLogicalPlan = Some(plan), maybeStatement = Some(newStatement), solveds = solveds, cardinalities = cardinalities)
+    in.copy(maybePeriodicCommit = Some(None), maybeLogicalPlan = Some(plan), maybeStatement = Some(newStatement), planningAttributes = PlanningAttributes(solveds, cardinalities, providedOrders))
   }
 
   private def varFor(s: String) = Variable(s)(pos)
@@ -119,7 +119,7 @@ class ReportCostComparisonsAsRows extends CostComparisonListener {
       ret("est cardinality"),
       ret("winner")
     )
-    val returnClause = Return(distinct = false, ReturnItems(includeExisting = false, returnItems)(pos), None, None, None, None, Set.empty)(pos)
+    val returnClause = Return(distinct = false, ReturnItems(includeExisting = false, returnItems)(pos), None, None, None, Set.empty)(pos)
     Query(None, SingleQuery(Seq(returnClause))(pos))(pos)
   }
 

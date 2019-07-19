@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import org.neo4j.helpers.Exceptions;
-import org.neo4j.scheduler.JobScheduler.Group;
-import org.neo4j.scheduler.JobScheduler.JobHandle;
+import org.neo4j.scheduler.Group;
+import org.neo4j.scheduler.JobHandle;
 
 final class ThreadPoolManager
 {

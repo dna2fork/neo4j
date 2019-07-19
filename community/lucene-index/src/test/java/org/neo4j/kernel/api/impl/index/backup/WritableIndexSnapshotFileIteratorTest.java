@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,6 +20,7 @@
 package org.neo4j.kernel.api.impl.index.backup;
 
 import org.apache.lucene.index.IndexWriter;
+import org.junit.jupiter.api.AfterEach;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,6 +34,7 @@ public class WritableIndexSnapshotFileIteratorTest extends ReadOnlyIndexSnapshot
     private IndexWriter indexWriter;
 
     @Override
+    @AfterEach
     public void tearDown() throws IOException
     {
         if ( indexWriter != null )

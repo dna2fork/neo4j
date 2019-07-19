@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,12 +22,12 @@ package org.neo4j.cypher.internal.spi.v3_1
 import org.neo4j.cypher.internal.compiler.v3_1.spi.SchemaTypes
 import org.neo4j.internal.kernel.api.{IndexReference => KernelIndexReference}
 import org.neo4j.internal.kernel.api.schema.SchemaDescriptor
-import org.neo4j.kernel.api.schema.constaints.{ConstraintDescriptorFactory, NodeExistenceConstraintDescriptor, RelExistenceConstraintDescriptor, UniquenessConstraintDescriptor => KernelUniquenessConstraint}
+import org.neo4j.kernel.api.schema.constraints.{ConstraintDescriptorFactory, NodeExistenceConstraintDescriptor, RelExistenceConstraintDescriptor, UniquenessConstraintDescriptor => KernelUniquenessConstraint}
 
 trait SchemaDescriptorTranslation {
   implicit def toCypher(index: KernelIndexReference): SchemaTypes.IndexDescriptor = {
     assertSingleProperty(index.properties())
-    SchemaTypes.IndexDescriptor(index.label(), index.properties()(0))
+      SchemaTypes.IndexDescriptor(index.schema().getEntityTokenIds()(0), index.schema().getPropertyIds()(0))
   }
 
   implicit def toKernel(constraint: SchemaTypes.UniquenessConstraint): KernelUniquenessConstraint =

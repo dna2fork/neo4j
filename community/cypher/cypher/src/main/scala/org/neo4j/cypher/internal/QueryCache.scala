@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,12 @@
 package org.neo4j.cypher.internal
 
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
+import org.neo4j.cypher.internal.QueryCache.ParameterTypeMap
+import org.neo4j.helpers.collection.Pair
 import org.neo4j.kernel.impl.query.TransactionalContext
+import org.neo4j.values.virtual.MapValue
+
+import scala.collection.JavaConversions._
 
 /**
   * The result of one cache lookup.
@@ -40,6 +45,8 @@ trait CacheTracer[QUERY_KEY] {
 
   def queryCacheMiss(queryKey: QUERY_KEY, metaData: String): Unit
 
+  def queryCacheRecompile(queryKey: QUERY_KEY, metaData: String): Unit
+
   def queryCacheStale(queryKey: QUERY_KEY, secondsSincePlan: Int, metaData: String): Unit
 
   def queryCacheFlush(sizeOfCacheBeforeFlush: Long): Unit
@@ -56,13 +63,43 @@ trait CacheTracer[QUERY_KEY] {
   * @param stalenessCaller Decided whether CachedExecutionPlans are stale
   * @param tracer Traces cache activity
   */
-class QueryCache[QUERY_KEY <: AnyRef, EXECUTABLE_QUERY <: AnyRef](val maximumSize: Int,
-                                                                  val stalenessCaller: PlanStalenessCaller[EXECUTABLE_QUERY],
-                                                                  val tracer: CacheTracer[QUERY_KEY]) {
+class QueryCache[QUERY_REP <: AnyRef, QUERY_KEY <: Pair[QUERY_REP, ParameterTypeMap], EXECUTABLE_QUERY <: AnyRef](
+    val maximumSize: Int, val stalenessCaller: PlanStalenessCaller[EXECUTABLE_QUERY], val tracer: CacheTracer[Pair[QUERY_REP, ParameterTypeMap]]) {
 
-  val inner: Cache[QUERY_KEY, EXECUTABLE_QUERY] = Caffeine.newBuilder().maximumSize(maximumSize).build[QUERY_KEY, EXECUTABLE_QUERY]()
+  private val inner: Cache[QUERY_KEY, CachedValue] = Caffeine.newBuilder().maximumSize(maximumSize).build[QUERY_KEY, CachedValue]()
 
   import QueryCache.NOT_PRESENT
+
+  /*
+    * The cached value wraps the value and maintains a count of how many times it has been fetched from the cache
+    * and whether or not it has been recompiled.
+    */
+  private class CachedValue(val value: EXECUTABLE_QUERY, val recompiled: Boolean) {
+
+    @volatile private var _numberOfHits = 0
+
+    def markHit(): Unit = {
+      if (!recompiled) {
+        _numberOfHits += 1
+      }
+    }
+
+    def numberOfHits: Int = _numberOfHits
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[CachedValue]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: CachedValue =>
+        (that canEqual this) &&
+          value == that.value
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(value)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+    }
+  }
 
   /**
     * Retrieve the CachedExecutionPlan associated with the given queryKey, or compile, cache and
@@ -71,12 +108,14 @@ class QueryCache[QUERY_KEY <: AnyRef, EXECUTABLE_QUERY <: AnyRef](val maximumSiz
     * @param queryKey the queryKey to retrieve the execution plan for
     * @param tc TransactionalContext in which to compile and compute staleness
     * @param compile Compiler to use if the query is not cached or stale
+    * @param recompile Recompile function to use if the query is deemed hot
     * @param metaData String which will be passed to the CacheTracer
     * @return A CacheLookup with an CachedExecutionPlan
     */
   def computeIfAbsentOrStale(queryKey: QUERY_KEY,
                              tc: TransactionalContext,
                              compile: () => EXECUTABLE_QUERY,
+                             recompile: (Int) => Option[EXECUTABLE_QUERY],
                              metaData: String = ""
                             ): CacheLookup[EXECUTABLE_QUERY] = {
     if (maximumSize == 0)
@@ -86,10 +125,25 @@ class QueryCache[QUERY_KEY <: AnyRef, EXECUTABLE_QUERY <: AnyRef](val maximumSiz
         case NOT_PRESENT =>
           compileAndCache(queryKey, tc, compile, metaData)
 
-        case executableQuery =>
-          stalenessCaller.staleness(tc, executableQuery) match {
+        case cachedValue =>
+          //mark as seen from cache
+          cachedValue.markHit()
+
+          stalenessCaller.staleness(tc, cachedValue.value) match {
             case NotStale =>
-              hit(queryKey, executableQuery, metaData)
+              //check if query is up for recompilation
+              val newCachedValue = if (!cachedValue.recompiled) {
+                recompile(cachedValue.numberOfHits) match {
+                  case Some(recompiledQuery) =>
+                    tracer.queryCacheRecompile(queryKey, metaData)
+                    val recompiled = new CachedValue(recompiledQuery, recompiled = true)
+                    inner.put(queryKey, recompiled)
+                    recompiled
+                  case None => cachedValue
+                }
+              } else cachedValue
+
+              hit(queryKey, newCachedValue, metaData)
             case Stale(secondsSincePlan) =>
               tracer.queryCacheStale(queryKey, secondsSincePlan, metaData)
               compileAndCache(queryKey, tc, compile, metaData)
@@ -111,15 +165,15 @@ class QueryCache[QUERY_KEY <: AnyRef, EXECUTABLE_QUERY <: AnyRef](val maximumSiz
                         metaData: String
                        ): CacheLookup[EXECUTABLE_QUERY] = {
     val newExecutableQuery = compile()
-    inner.put(queryKey, newExecutableQuery)
+    inner.put(queryKey,  new CachedValue(newExecutableQuery, recompiled = false))
     miss(queryKey, newExecutableQuery, metaData)
   }
 
   private def hit(queryKey: QUERY_KEY,
-                  executableQuery: EXECUTABLE_QUERY,
+                  executableQuery: CachedValue,
                   metaData: String) = {
     tracer.queryCacheHit(queryKey, metaData)
-    CacheHit(executableQuery)
+    CacheHit(executableQuery.value)
   }
 
   private def miss(queryKey: QUERY_KEY,
@@ -144,5 +198,17 @@ class QueryCache[QUERY_KEY <: AnyRef, EXECUTABLE_QUERY <: AnyRef](val maximumSiz
 }
 
 object QueryCache {
-  val NOT_PRESENT: CacheableExecutableQuery = null
+  val NOT_PRESENT: ExecutableQuery = null
+  type ParameterTypeMap = Map[String, Class[_]]
+
+  /**
+    * Use this method to extract ParameterTypeMap from MapValue that represents parameters
+    */
+  def extractParameterTypeMap(value: MapValue): ParameterTypeMap = {
+    val resultMap = Map.newBuilder[String, Class[_]]
+    for(key <- value.keySet().iterator()) {
+      resultMap += ((key, value.get(key).getClass))
+    }
+    resultMap.result()
+  }
 }

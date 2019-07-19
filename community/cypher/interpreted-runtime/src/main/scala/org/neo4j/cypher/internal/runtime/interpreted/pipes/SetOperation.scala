@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,13 +22,14 @@ package org.neo4j.cypher.internal.runtime.interpreted.pipes
 import org.neo4j.cypher.internal.runtime.interpreted._
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Expression
 import org.neo4j.cypher.internal.runtime.{Operations, QueryContext}
-import org.opencypher.v9_0.util.{CypherTypeException, InvalidArgumentException}
+import org.neo4j.cypher.internal.v3_5.util.{CypherTypeException, InvalidArgumentException}
 import org.neo4j.function.ThrowingBiConsumer
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable.Values
 import org.neo4j.values.virtual._
 
 import scala.collection.Map
+import scala.collection.mutable.ArrayBuffer
 
 sealed trait SetOperation {
 
@@ -37,6 +38,8 @@ sealed trait SetOperation {
   def name: String
 
   def needsExclusiveLock: Boolean
+
+  def registerOwningPipe(pipe: Pipe): Unit
 }
 
 object SetOperation {
@@ -51,7 +54,10 @@ object SetOperation {
   }
 
   private def propertyKeyMap(qtx: QueryContext, map: MapValue): Map[Int, AnyValue] = {
-    var builder = Map.newBuilder[Int, AnyValue]
+    val builder = Map.newBuilder[Int, AnyValue]
+    val setKeys = new ArrayBuffer[String]()
+    val setValues = new ArrayBuffer[AnyValue]()
+
     map.foreach(new ThrowingBiConsumer[String, AnyValue, RuntimeException] {
       override def accept(k: String, v: AnyValue): Unit = {
         if (v == Values.NO_VALUE) {
@@ -61,10 +67,17 @@ object SetOperation {
           }
         }
         else {
-          builder += qtx.getOrCreatePropertyKeyId(k) -> v
+          setKeys += k
+          setValues += v
         }
       }
     })
+
+    // Adding property keys is O(|totalPropertyKeyIds|^2) per call, so
+    // batch creation is way faster is graphs with many propertyKeyIds
+    val propertyIds = qtx.getOrCreatePropertyKeyIds(setKeys.toArray)
+    for (i <- propertyIds.indices)
+      builder += (propertyIds(i) -> setValues(i))
 
     builder.result()
   }
@@ -100,6 +113,8 @@ abstract class SetEntityPropertyOperation[T](itemName: String, propertyKey: Lazy
       val ops = operations(state.query)
       if (needsExclusiveLock) ops.acquireExclusiveLock(itemId)
 
+      invalidateCachedProperties(executionContext, itemId)
+
       try {
         setProperty[T](executionContext, state, ops, itemId, propertyKey, expression)
       } finally if (needsExclusiveLock) ops.releaseExclusiveLock(itemId)
@@ -109,6 +124,10 @@ abstract class SetEntityPropertyOperation[T](itemName: String, propertyKey: Lazy
   protected def id(item: Any): Long
 
   protected def operations(qtx: QueryContext): Operations[T]
+
+  protected def invalidateCachedProperties(executionContext: ExecutionContext, id: Long): Unit
+
+  override def registerOwningPipe(pipe: Pipe): Unit = expression.registerOwningPipe(pipe)
 }
 
 case class SetNodePropertyOperation(nodeName: String, propertyKey: LazyPropertyKey,
@@ -120,6 +139,9 @@ case class SetNodePropertyOperation(nodeName: String, propertyKey: LazyPropertyK
   override protected def id(item: Any) = CastSupport.castOrFail[VirtualNodeValue](item).id()
 
   override protected def operations(qtx: QueryContext) = qtx.nodeOps
+
+  override protected def invalidateCachedProperties(executionContext: ExecutionContext, id: Long): Unit =
+    executionContext.invalidateCachedProperties(id)
 }
 
 case class SetRelationshipPropertyOperation(relName: String, propertyKey: LazyPropertyKey,
@@ -131,6 +153,8 @@ case class SetRelationshipPropertyOperation(relName: String, propertyKey: LazyPr
   override protected def id(item: Any) = CastSupport.castOrFail[VirtualRelationshipValue](item).id()
 
   override protected def operations(qtx: QueryContext) = qtx.relationshipOps
+
+  override protected def invalidateCachedProperties(executionContext: ExecutionContext, id: Long): Unit = {} // we do not cache relationships
 }
 
 case class SetPropertyOperation(entityExpr: Expression, propertyKey: LazyPropertyKey, expression: Expression)
@@ -157,6 +181,11 @@ case class SetPropertyOperation(entityExpr: Expression, propertyKey: LazyPropert
   }
 
   override def needsExclusiveLock = true
+
+  override def registerOwningPipe(pipe: Pipe): Unit = {
+    entityExpr.registerOwningPipe(pipe)
+    expression.registerOwningPipe(pipe)
+  }
 }
 
 abstract class SetPropertyFromMapOperation[T](itemName: String, expression: Expression,
@@ -200,6 +229,8 @@ abstract class SetPropertyFromMapOperation[T](itemName: String, expression: Expr
       }
     }
   }
+
+  override def registerOwningPipe(pipe: Pipe): Unit = expression.registerOwningPipe(pipe)
 }
 
 case class SetNodePropertyFromMapOperation(nodeName: String, expression: Expression,
@@ -238,4 +269,6 @@ case class SetLabelsOperation(nodeName: String, labels: Seq[LazyLabel]) extends 
   override def name = "SetLabels"
 
   override def needsExclusiveLock = false
+
+  override def registerOwningPipe(pipe: Pipe): Unit = ()
 }

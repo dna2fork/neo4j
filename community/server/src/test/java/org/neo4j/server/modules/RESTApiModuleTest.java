@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.neo4j.kernel.configuration.Config;
-import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.logging.NullLogProvider;
 import org.neo4j.scheduler.JobScheduler;
 import org.neo4j.server.configuration.ServerSettings;
@@ -51,11 +50,8 @@ public class RESTApiModuleTest
         params.put( ServerSettings.rest_api_path.name(), path );
         Config config = Config.defaults( params );
 
-        Dependencies deps = new Dependencies();
-        deps.satisfyDependency( new UsageData( mock( JobScheduler.class ) ) );
-
         // When
-        RESTApiModule module = new RESTApiModule( webServer, config, deps, NullLogProvider.getInstance() );
+        RESTApiModule module = new RESTApiModule( webServer, config, () -> new UsageData( mock( JobScheduler.class ) ), NullLogProvider.getInstance() );
         module.start();
 
         // Then

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,9 +20,9 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.plans.rewriter
 
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.expressions.{Expression, FunctionInvocation}
-import org.opencypher.v9_0.util.attribution.SameId
-import org.opencypher.v9_0.util.{Rewriter, topDown}
+import org.neo4j.cypher.internal.v3_5.expressions.{Ands, Expression, FunctionInvocation}
+import org.neo4j.cypher.internal.v3_5.util.attribution.SameId
+import org.neo4j.cypher.internal.v3_5.util.{Rewriter, topDown}
 
 import scala.collection.mutable
 
@@ -51,7 +51,7 @@ case object pruningVarExpander extends Rewriter {
         case Projection(_, expressions) =>
           dependencies.map(_ ++ expressions.values.flatMap(_.dependencies.map(_.name)))
 
-        case Selection(predicates, _) =>
+        case Selection(Ands(predicates), _) =>
           dependencies.map(_ ++ predicates.flatMap(_.dependencies.map(_.name)))
 
         case _: Expand |

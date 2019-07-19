@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,9 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.ast.convert.plannerQuery
 
-import org.opencypher.v9_0.util.NonEmptyList
 import org.neo4j.cypher.internal.ir.v3_5.Predicate
-import org.opencypher.v9_0.expressions.{AndedPropertyInequalities, InequalityExpression, Property, Variable}
+import org.neo4j.cypher.internal.v3_5.expressions.{AndedPropertyInequalities, InequalityExpression, Property, Variable}
+import org.neo4j.cypher.internal.v3_5.util.NonEmptyList
 
 // This transforms
 //
@@ -79,7 +79,7 @@ object groupInequalityPredicates extends (NonEmptyList[Predicate] => NonEmptyLis
   }
 
   private def groupedInequalities(inequalities: NonEmptyList[(Predicate, InequalityExpression)]) = {
-    inequalities.groupBy { (input: (Predicate, InequalityExpression)) =>
+    inequalities.groupBy { input: (Predicate, InequalityExpression) =>
       val (_, inequality) = input
       inequality.lhs match {
         case prop@Property(ident: Variable, _) => Some(ident -> prop)

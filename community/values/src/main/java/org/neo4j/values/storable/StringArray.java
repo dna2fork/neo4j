@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -112,7 +112,7 @@ public class StringArray extends TextArray
     @Override
     public AnyValue value( int offset )
     {
-        return Values.stringValue( stringValue( offset ) );
+        return Values.stringOrNoValue( stringValue( offset ) );
     }
 
     @Override
@@ -124,6 +124,12 @@ public class StringArray extends TextArray
     @Override
     public String toString()
     {
-        return format( "StringArray%s", Arrays.toString( value ) );
+        return format( "%s%s", getTypeName(), Arrays.toString( value ) );
+    }
+
+    @Override
+    public String getTypeName()
+    {
+        return "StringArray";
     }
 }

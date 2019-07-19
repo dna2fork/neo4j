@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,12 @@
  */
 package org.neo4j.cypher.internal.runtime.interpreted.pipes.aggregation
 
-import org.opencypher.v9_0.util.CypherTypeException
+import org.neo4j.cypher.internal.v3_5.util.CypherTypeException
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Expression
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 import org.neo4j.values.storable.Values._
 import org.neo4j.values.storable.{DoubleValue, DurationValue, LongValue, Values}
+import org.neo4j.values.utils.InvalidValuesArgumentException
 
 class SumFunctionTest extends CypherFunSuite with AggregateTest {
   def createAggregator(inner: Expression) = new SumFunction(inner)
@@ -60,7 +61,7 @@ class SumFunctionTest extends CypherFunSuite with AggregateTest {
 
   test("catches duration overflows") {
     val durationValue = DurationValue.duration(0, 0, Long.MaxValue, 0)
-    an[ArithmeticException] shouldBe thrownBy{
+    an[InvalidValuesArgumentException] shouldBe thrownBy{
       aggregateOn(durationValue, durationValue)
     }
   }

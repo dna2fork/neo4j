@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,8 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.phases
 
-import org.opencypher.v9_0.util.AssertionRunner.{Thunk, runUnderAssertion}
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.AssertionRunner.{Thunk, runUnderAssertion}
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 class AssertionsShouldBeEnabledTest extends CypherFunSuite {
   test("tests should be run with assertions enabled") {

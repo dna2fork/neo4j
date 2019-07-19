@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,12 +22,12 @@ package org.neo4j.server.database;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import javax.servlet.http.HttpServletRequest;
 
 import org.neo4j.cypher.internal.javacompat.ExecutionEngine;
 import org.neo4j.graphdb.DependencyResolver;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.internal.kernel.api.security.LoginContext;
 import org.neo4j.kernel.GraphDatabaseQueryService;
 import org.neo4j.kernel.api.KernelTransaction;
@@ -110,8 +110,8 @@ public class CypherExecutorTest
         cypherExecutor.createTransactionContext( QUERY, VirtualValues.emptyMap(), request );
 
         verify( databaseQueryService ).beginTransaction( KernelTransaction.Type.implicit, AUTH_DISABLED );
-        logProvider.assertContainsMessageContaining( "Fail to parse `max-execution-time` header with value: 'not a " +
-                                                     "number'. Should be a positive number." );
+        logProvider.rawMessageMatcher().assertContains(
+                "Fail to parse `max-execution-time` header with value: 'not a number'. Should be a positive number." );
     }
 
     @Test
@@ -153,7 +153,7 @@ public class CypherExecutorTest
         QueryRegistryOperations registryOperations = mock( QueryRegistryOperations.class );
         when( statement.queryRegistration() ).thenReturn( registryOperations );
         when( statementBridge.get() ).thenReturn( statement );
-        when( kernelTransaction.securityContext() ).thenReturn( loginContext.authorize( s -> -1 ) );
+        when( kernelTransaction.securityContext() ).thenReturn( loginContext.authorize( s -> -1, GraphDatabaseSettings.DEFAULT_DATABASE_NAME ) );
         when( kernelTransaction.transactionType() ).thenReturn( type  );
         when( database.getGraph() ).thenReturn( databaseFacade );
         when( databaseFacade.getDependencyResolver() ).thenReturn( resolver );

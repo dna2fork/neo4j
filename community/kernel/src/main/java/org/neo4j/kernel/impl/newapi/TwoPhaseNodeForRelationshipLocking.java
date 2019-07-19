@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -28,9 +28,9 @@ import org.neo4j.internal.kernel.api.Transaction;
 import org.neo4j.internal.kernel.api.exceptions.KernelException;
 import org.neo4j.internal.kernel.api.helpers.RelationshipSelectionCursor;
 import org.neo4j.internal.kernel.api.helpers.RelationshipSelections;
-import org.neo4j.kernel.impl.locking.LockTracer;
 import org.neo4j.kernel.impl.locking.Locks;
 import org.neo4j.kernel.impl.locking.ResourceTypes;
+import org.neo4j.storageengine.api.lock.LockTracer;
 
 import static org.neo4j.kernel.api.StatementConstants.NO_SUCH_RELATIONSHIP;
 
@@ -72,13 +72,15 @@ class TwoPhaseNodeForRelationshipLocking
             //if the node is not there, someone else probably deleted it, just ignore
             if ( nodes.next() )
             {
-                RelationshipSelectionCursor rels =
-                        RelationshipSelections.allCursor( transaction.cursors(), nodes, null );
-                boolean first = true;
-                while ( rels.next() && !retry )
+                try ( RelationshipSelectionCursor rels =
+                              RelationshipSelections.allCursor( transaction.cursors(), nodes, null ) )
                 {
-                    retry = performAction( rels.relationshipReference(), first );
-                    first = false;
+                    boolean first = true;
+                    while ( rels.next() && !retry )
+                    {
+                        retry = performAction( rels.relationshipReference(), first );
+                        first = false;
+                    }
                 }
             }
         }
@@ -97,17 +99,19 @@ class TwoPhaseNodeForRelationshipLocking
             this.sortedNodeIds = EMPTY;
             return;
         }
-        RelationshipSelectionCursor rels =
-                RelationshipSelections.allCursor( transaction.cursors(), nodes, null );
-        while ( rels.next() )
+        try ( RelationshipSelectionCursor rels =
+                      RelationshipSelections.allCursor( transaction.cursors(), nodes, null ) )
         {
-            if ( firstRelId == NO_SUCH_RELATIONSHIP )
+            while ( rels.next() )
             {
-                firstRelId = rels.relationshipReference();
-            }
+                if ( firstRelId == NO_SUCH_RELATIONSHIP )
+                {
+                    firstRelId = rels.relationshipReference();
+                }
 
-            nodeIdSet.add( rels.sourceNodeReference() );
-            nodeIdSet.add( rels.targetNodeReference() );
+                nodeIdSet.add( rels.sourceNodeReference() );
+                nodeIdSet.add( rels.targetNodeReference() );
+            }
         }
 
         this.sortedNodeIds = nodeIdSet.toSortedArray();

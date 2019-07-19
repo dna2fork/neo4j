@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -33,7 +33,7 @@ import org.neo4j.unsafe.impl.batchimport.input.InputChunk;
 /**
  * Iterates over groups of input data, each group containing one or more input files. A whole group conforms has each its own header.
  */
-public class CsvGroupInputIterator extends InputIterator.Adapter
+public class CsvGroupInputIterator implements InputIterator
 {
     private final Iterator<DataFactory> source;
     private final Header.Factory headerFactory;

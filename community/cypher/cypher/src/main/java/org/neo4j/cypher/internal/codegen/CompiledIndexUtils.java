@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -65,7 +65,7 @@ public final class CompiledIndexUtils
         {
             NodeValueIndexCursor cursor = cursors.allocateNodeValueIndexCursor();
             IndexQuery.ExactPredicate query = exact( index.properties()[0], makeValueNeoSafe( value ) );
-            read.nodeIndexSeek( index, cursor, IndexOrder.NONE, query );
+            read.nodeIndexSeek( index, cursor, IndexOrder.NONE, false, query );
             return cursor;
         }
     }

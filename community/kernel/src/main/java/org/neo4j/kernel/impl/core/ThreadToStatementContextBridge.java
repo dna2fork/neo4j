@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,10 +24,10 @@ import java.util.function.Supplier;
 import org.neo4j.graphdb.DatabaseShutdownException;
 import org.neo4j.graphdb.NotInTransactionException;
 import org.neo4j.graphdb.TransactionTerminatedException;
-import org.neo4j.kernel.AvailabilityGuard;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.Statement;
 import org.neo4j.kernel.api.exceptions.Status;
+import org.neo4j.kernel.availability.AvailabilityGuard;
 
 /**
  * This is meant to serve as the bridge that tie transactions to threads.
@@ -101,8 +101,7 @@ public class ThreadToStatementContextBridge implements Supplier<Statement>
         }
         if ( transaction.isTerminated() )
         {
-            Status terminationReason = transaction.getReasonIfTerminated().orElse( Status.Transaction.Terminated );
-            throw new TransactionTerminatedException( terminationReason );
+            throw new TransactionTerminatedException( transaction.getReasonIfTerminated().orElse( Status.Transaction.Terminated ) );
         }
     }
 

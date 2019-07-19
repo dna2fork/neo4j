@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -47,6 +47,12 @@ public abstract class ListValue extends VirtualValue implements SequenceValue, I
 
     @Override
     public abstract AnyValue value( int offset );
+
+    @Override
+    public String getTypeName()
+    {
+        return "List";
+    }
 
     static final class ArrayValueListValue extends ListValue
     {
@@ -655,7 +661,7 @@ public abstract class ListValue extends VirtualValue implements SequenceValue, I
     @Override
     public String toString()
     {
-        StringBuilder sb = new StringBuilder( "List{" );
+        StringBuilder sb = new StringBuilder( getTypeName() + "{" );
         int i = 0;
         for ( ; i < size() - 1; i++ )
         {
@@ -829,6 +835,11 @@ public abstract class ListValue extends VirtualValue implements SequenceValue, I
         {
             return new ListSlice( this, f, t );
         }
+    }
+
+    public ListValue tail()
+    {
+        return slice( 1, size() );
     }
 
     public ListValue drop( int n )

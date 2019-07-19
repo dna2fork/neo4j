@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -68,7 +68,7 @@ public abstract class BaseRecordFormats implements RecordFormats
     @Override
     public boolean equals( Object obj )
     {
-        if ( obj == null || !(obj instanceof RecordFormats) )
+        if ( !(obj instanceof RecordFormats) )
         {
             return false;
         }

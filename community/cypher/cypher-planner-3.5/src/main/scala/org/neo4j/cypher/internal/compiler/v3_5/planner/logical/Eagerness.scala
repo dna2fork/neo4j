@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,10 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
 import org.neo4j.cypher.internal.ir.v3_5.{PlannerQuery, QueryGraph}
 import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Solveds
-import org.opencypher.v9_0.util.attribution.{Attributes, SameId}
-import org.opencypher.v9_0.util.{Rewriter, bottomUp}
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.util.helpers.fixedPoint
+import org.neo4j.cypher.internal.v3_5.util.attribution.{Attributes, SameId}
+import org.neo4j.cypher.internal.v3_5.util.helpers.fixedPoint
+import org.neo4j.cypher.internal.v3_5.util.{Rewriter, bottomUp}
 
 import scala.annotation.tailrec
 
@@ -123,10 +123,14 @@ object Eagerness {
 
   def horizonReadWriteEagerize(inputPlan: LogicalPlan, query: PlannerQuery, context: LogicalPlanningContext): LogicalPlan = {
     val alwaysEager = context.config.updateStrategy.alwaysEager
-    if (alwaysEager || (query.tail.nonEmpty && horizonReadWriteConflict(query, query.tail.get, context)))
-      context.logicalPlanProducer.planEager(inputPlan, context)
-    else
-      inputPlan
+    inputPlan match {
+      case ProcedureCall(left, call) if call.signature.eager =>
+        context.logicalPlanProducer.planCallProcedure(context.logicalPlanProducer.planEager(left, context), call, call, context)
+      case _ if alwaysEager || (query.tail.nonEmpty && horizonReadWriteConflict(query, query.tail.get, context)) =>
+        context.logicalPlanProducer.planEager(inputPlan, context)
+      case _ =>
+        inputPlan
+    }
   }
 
   /**
@@ -297,15 +301,9 @@ object Eagerness {
         solveds.copy(apply.id, res.id)
         res
 
-      // L Ax (CN R) => CN Ax (L R)
-      case apply@Apply(lhs, create@CreateNode(rhs, name, labels, props)) =>
-        val res = create.copy(source = Apply(lhs, rhs)(SameId(apply.id)), name, labels, props)(attributes.copy(create.id))
-        solveds.copy(apply.id, res.id)
-        res
-
-      // L Ax (CR R) => CR Ax (L R)
-      case apply@Apply(lhs, create@CreateRelationship(rhs, _, _, _, _, _)) =>
-        val res = create.copy(source = Apply(lhs, rhs)(SameId(apply.id)))(attributes.copy(create.id))
+      // L Ax (Cr R) => Cr Ax (L R)
+      case apply@Apply(lhs, create@Create(rhs, nodes, relationships)) =>
+        val res = create.copy(source = Apply(lhs, rhs)(SameId(apply.id)), nodes, relationships)(attributes.copy(create.id))
         solveds.copy(apply.id, res.id)
         res
 

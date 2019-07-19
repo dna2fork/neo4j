@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,10 +23,8 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.neo4j.helpers.collection.Iterators;
-import org.neo4j.internal.kernel.api.schema.SchemaUtil;
+import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
 import org.neo4j.values.storable.ValueCategory;
-
-import static java.lang.String.format;
 
 /**
  * Reference to a specific index together with it's capabilities. This reference is valid until the schema of the database changes
@@ -34,20 +32,22 @@ import static java.lang.String.format;
  */
 public interface IndexReference extends IndexCapability
 {
+    String UNNAMED_INDEX = "Unnamed index";
+
     /**
      * Returns true if this index only allows one value per key.
      */
     boolean isUnique();
 
     /**
-     * Returns the labelId associated with this index.
-     */
-    int label();
-
-    /**
      * Returns the propertyKeyIds associated with this index.
      */
     int[] properties();
+
+    /**
+     * Returns the schema of this index.
+     */
+    SchemaDescriptor schema();
 
     /**
      * Returns the key (or name) of the index provider that backs this index.
@@ -60,14 +60,15 @@ public interface IndexReference extends IndexCapability
     String providerVersion();
 
     /**
+     * The unique name for this index - either automatically generated or user supplied - or the {@link #UNNAMED_INDEX} constant.
+     */
+    String name();
+
+    /**
      * @param tokenNameLookup used for looking up names for token ids.
      * @return a user friendly description of what this index indexes.
      */
-    default String userDescription( TokenNameLookup tokenNameLookup )
-    {
-        String type = isUnique() ? "UNIQUE" : "GENERAL";
-        return format( "Index( %s, %s )",  type, SchemaUtil.niceProperties( tokenNameLookup, properties() ) );
-    }
+    String userDescription( TokenNameLookup tokenNameLookup );
 
     /**
      * Sorts indexes by type, returning first GENERAL indexes, followed by UNIQUE. Implementation is not suitable in
@@ -100,21 +101,33 @@ public interface IndexReference extends IndexCapability
         }
 
         @Override
+        public boolean isFulltextIndex()
+        {
+            return false;
+        }
+
+        @Override
+        public boolean isEventuallyConsistent()
+        {
+            return false;
+        }
+
+        @Override
         public boolean isUnique()
         {
             return false;
         }
 
         @Override
-        public int label()
-        {
-            return Token.NO_TOKEN;
-        }
-
-        @Override
         public int[] properties()
         {
             return new int[0];
+        }
+
+        @Override
+        public SchemaDescriptor schema()
+        {
+            return SchemaDescriptor.NO_SCHEMA;
         }
 
         @Override
@@ -127,6 +140,18 @@ public interface IndexReference extends IndexCapability
         public String providerVersion()
         {
             return null;
+        }
+
+        @Override
+        public String name()
+        {
+            return UNNAMED_INDEX;
+        }
+
+        @Override
+        public String userDescription( TokenNameLookup tokenNameLookup )
+        {
+            return SchemaDescriptor.NO_SCHEMA.userDescription( tokenNameLookup );
         }
     };
 }

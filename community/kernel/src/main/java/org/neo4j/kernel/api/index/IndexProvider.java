@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,22 @@
  */
 package org.neo4j.kernel.api.index;
 
+import java.io.File;
 import java.io.IOException;
-import java.util.Map;
 
 import org.neo4j.internal.kernel.api.IndexCapability;
 import org.neo4j.internal.kernel.api.InternalIndexState;
+import org.neo4j.internal.kernel.api.exceptions.schema.MisconfiguredIndexException;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.PageCache;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
+import org.neo4j.kernel.impl.index.schema.ByteBufferFactory;
 import org.neo4j.kernel.impl.storemigration.StoreMigrationParticipant;
 import org.neo4j.kernel.lifecycle.LifecycleAdapter;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 /**
  * Contract for implementing an index in Neo4j.
@@ -43,7 +46,7 @@ import org.neo4j.kernel.lifecycle.LifecycleAdapter;
  *
  * When an index rule is added, the {@link IndexingService} is notified. It will, in turn, ask
  * your {@link IndexProvider} for a
- * {@link #getPopulator(StoreIndexDescriptor, IndexSamplingConfig) batch index writer}.
+ * {@link #getPopulator(StoreIndexDescriptor, IndexSamplingConfig, ByteBufferFactory) batch index writer}.
  *
  * A background index job is triggered, and all existing data that applies to the new rule, as well as new data
  * from the "outside", will be inserted using the writer. You are guaranteed that usage of this writer,
@@ -91,7 +94,7 @@ import org.neo4j.kernel.lifecycle.LifecycleAdapter;
  * {@link #getOnlineAccessor(StoreIndexDescriptor, IndexSamplingConfig) online accessor} to
  * write to the index.
  */
-public abstract class IndexProvider extends LifecycleAdapter implements Comparable<IndexProvider>
+public abstract class IndexProvider extends LifecycleAdapter
 {
     public interface Monitor
     {
@@ -105,18 +108,48 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
             }
 
             @Override
-            public void recoveryCompleted( IndexDescriptor schemaIndexDescriptor, String indexFile, Map<String,Object> data )
+            public void recoveryCleanupRegistered( File indexFile, IndexDescriptor indexDescriptor )
+            {   // no-op
+            }
+
+            @Override
+            public void recoveryCleanupStarted( File indexFile, IndexDescriptor indexDescriptor )
+            {   // no-op
+            }
+
+            @Override
+            public void recoveryCleanupFinished( File indexFile, IndexDescriptor indexDescriptor,
+                    long numberOfPagesVisited, long numberOfCleanedCrashPointers, long durationMillis )
+            {   // no-op
+            }
+
+            @Override
+            public void recoveryCleanupClosed( File indexFile, IndexDescriptor indexDescriptor )
+            {   // no-op
+            }
+
+            @Override
+            public void recoveryCleanupFailed( File indexFile, IndexDescriptor indexDescriptor, Throwable throwable )
             {   // no-op
             }
         }
 
         void failedToOpenIndex( StoreIndexDescriptor schemaIndexDescriptor, String action, Exception cause );
 
-        void recoveryCompleted( IndexDescriptor schemaIndexDescriptor, String indexFile, Map<String,Object> data );
+        void recoveryCleanupRegistered( File indexFile, IndexDescriptor indexDescriptor );
+
+        void recoveryCleanupStarted( File indexFile, IndexDescriptor indexDescriptor );
+
+        void recoveryCleanupFinished( File indexFile, IndexDescriptor indexDescriptor,
+                long numberOfPagesVisited, long numberOfCleanedCrashPointers, long durationMillis );
+
+        void recoveryCleanupClosed( File indexFile, IndexDescriptor indexDescriptor );
+
+        void recoveryCleanupFailed( File indexFile, IndexDescriptor indexDescriptor, Throwable throwable );
     }
 
     public static final IndexProvider EMPTY =
-            new IndexProvider( new Descriptor( "no-index-provider", "1.0" ), -1, IndexDirectoryStructure.NONE )
+            new IndexProvider( new IndexProviderDescriptor( "no-index-provider", "1.0" ), IndexDirectoryStructure.NONE )
             {
                 private final IndexAccessor singleWriter = IndexAccessor.EMPTY;
                 private final IndexPopulator singlePopulator = IndexPopulator.EMPTY;
@@ -128,7 +161,7 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
                 }
 
                 @Override
-                public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig )
+                public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory )
                 {
                     return singlePopulator;
                 }
@@ -140,7 +173,7 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
                 }
 
                 @Override
-                public IndexCapability getCapability()
+                public IndexCapability getCapability( StoreIndexDescriptor descriptor )
                 {
                     return IndexCapability.NO_CAPABILITY;
                 }
@@ -159,36 +192,43 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
                 }
             };
 
-    /**
-     * Indicate that {@link Descriptor} has not yet been decided.
-     * Specifically before transaction that create a new index has committed.
-     */
-    public static final Descriptor UNDECIDED = new Descriptor( "Undecided", "0" );
-
-    protected final int priority;
-    private final Descriptor providerDescriptor;
+    private final IndexProviderDescriptor providerDescriptor;
     private final IndexDirectoryStructure.Factory directoryStructureFactory;
     private final IndexDirectoryStructure directoryStructure;
 
     protected IndexProvider( IndexProvider copySource )
     {
-        this( copySource.providerDescriptor, copySource.priority, copySource.directoryStructureFactory );
+        this( copySource.providerDescriptor, copySource.directoryStructureFactory );
     }
 
-    protected IndexProvider( Descriptor descriptor, int priority,
-                             IndexDirectoryStructure.Factory directoryStructureFactory )
+    protected IndexProvider( IndexProviderDescriptor descriptor, IndexDirectoryStructure.Factory directoryStructureFactory )
     {
         this.directoryStructureFactory = directoryStructureFactory;
         assert descriptor != null;
-        this.priority = priority;
         this.providerDescriptor = descriptor;
         this.directoryStructure = directoryStructureFactory.forProvider( descriptor );
     }
 
     /**
+     * Before an index is created, the chosen index provider will be asked to bless the index descriptor by calling this method, giving the index descriptor
+     * as an argument. The returned index descriptor is then blessed, and will be used for creating the index. This gives the provider an opportunity to check
+     * the index configuration, and make sure that it is sensible and support by this provider.
+     *
+     * @param index The index descriptor to bless.
+     * @return The blessed index descriptor that will be used for creating the index.
+     * @throws MisconfiguredIndexException if the index descriptor cannot be blessed by this provider for some reason.
+     */
+    public IndexDescriptor bless( IndexDescriptor index ) throws MisconfiguredIndexException
+    {
+        // Normal schema indexes accept all configurations by default. More specialised or custom providers, such as the fulltext index provider,
+        // can override this method to do whatever checking suits their needs.
+        return index;
+    }
+
+    /**
      * Used for initially populating a created index, using batch insertion.
      */
-    public abstract IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig );
+    public abstract IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory );
 
     /**
      * Used for updating an index once initial population has completed.
@@ -215,21 +255,17 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
 
     /**
      * Return {@link IndexCapability} for this index provider.
+     *
+     * @param descriptor The specific {@link StoreIndexDescriptor} to get the capabilities for, in case it matters.
      */
-    public abstract IndexCapability getCapability();
+    public abstract IndexCapability getCapability( StoreIndexDescriptor descriptor );
 
     /**
      * @return a description of this index provider
      */
-    public Descriptor getProviderDescriptor()
+    public IndexProviderDescriptor getProviderDescriptor()
     {
         return providerDescriptor;
-    }
-
-    @Override
-    public int compareTo( IndexProvider o )
-    {
-        return this.priority - o.priority;
     }
 
     @Override
@@ -246,16 +282,13 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
 
         IndexProvider other = (IndexProvider) o;
 
-        return priority == other.priority &&
-               providerDescriptor.equals( other.providerDescriptor );
+        return providerDescriptor.equals( other.providerDescriptor );
     }
 
     @Override
     public int hashCode()
     {
-        int result = priority;
-        result = 31 * result + providerDescriptor.hashCode();
-        return result;
+        return providerDescriptor.hashCode();
     }
 
     /**
@@ -269,69 +302,47 @@ public abstract class IndexProvider extends LifecycleAdapter implements Comparab
 
     public abstract StoreMigrationParticipant storeMigrationParticipant( FileSystemAbstraction fs, PageCache pageCache );
 
-    public static class Descriptor
+    public static class Adaptor extends IndexProvider
     {
-        private final String key;
-        private final String version;
-
-        public Descriptor( String key, String version )
+        protected Adaptor( IndexProviderDescriptor descriptor, IndexDirectoryStructure.Factory directoryStructureFactory )
         {
-            if ( key == null )
-            {
-                throw new IllegalArgumentException( "null provider key prohibited" );
-            }
-            if ( key.length() == 0 )
-            {
-                throw new IllegalArgumentException( "empty provider key prohibited" );
-            }
-            if ( version == null )
-            {
-                throw new IllegalArgumentException( "null provider version prohibited" );
-            }
-
-            this.key = key;
-            this.version = version;
-        }
-
-        public String getKey()
-        {
-            return key;
-        }
-
-        public String getVersion()
-        {
-            return version;
-        }
-
-        /**
-         * @return a combination of {@link #getKey()} and {@link #getVersion()} with a '-' in between.
-         */
-        public String name()
-        {
-            return key + "-" + version;
+            super( descriptor, directoryStructureFactory );
         }
 
         @Override
-        public int hashCode()
+        public IndexPopulator getPopulator( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, ByteBufferFactory bufferFactory )
         {
-            return ( 23 + key.hashCode() ) ^ version.hashCode();
+            return null;
         }
 
         @Override
-        public boolean equals( Object obj )
+        public IndexAccessor getOnlineAccessor( StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig )
         {
-            if ( obj instanceof Descriptor )
-            {
-                Descriptor otherDescriptor = (Descriptor) obj;
-                return key.equals( otherDescriptor.getKey() ) && version.equals( otherDescriptor.getVersion() );
-            }
-            return false;
+            return null;
         }
 
         @Override
-        public String toString()
+        public String getPopulationFailure( StoreIndexDescriptor descriptor ) throws IllegalStateException
         {
-            return "{key=" + key + ", version=" + version + "}";
+            return null;
+        }
+
+        @Override
+        public InternalIndexState getInitialState( StoreIndexDescriptor descriptor )
+        {
+            return null;
+        }
+
+        @Override
+        public IndexCapability getCapability( StoreIndexDescriptor descriptor )
+        {
+            return null;
+        }
+
+        @Override
+        public StoreMigrationParticipant storeMigrationParticipant( FileSystemAbstraction fs, PageCache pageCache )
+        {
+            return null;
         }
     }
 }

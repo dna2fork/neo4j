@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,6 +19,7 @@
  */
 package org.neo4j.kernel.impl.coreapi;
 
+import java.util.Map;
 import java.util.Optional;
 
 import org.neo4j.graphdb.ConstraintViolationException;
@@ -144,5 +145,11 @@ public class TopLevelTransaction implements InternalTransaction
     public Optional<Status> terminationReason()
     {
         return transaction.getReasonIfTerminated();
+    }
+
+    @Override
+    public void setMetaData( Map<String,Object> txMeta )
+    {
+        transaction.setMetaData( txMeta );
     }
 }

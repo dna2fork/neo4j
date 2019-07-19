@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.io;
 
-import java.io.IOException;
 import java.io.OutputStream;
 
 public class NullOutputStream extends OutputStream

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,30 +21,22 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.Eagerness.unnestEager
+import org.neo4j.cypher.internal.ir.v3_5.CreateNode
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.util.helpers.fixedPoint
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.util.attribution.Attributes
-import org.opencypher.v9_0.expressions.{PropertyKeyName, RelTypeName}
+import org.neo4j.cypher.internal.v3_5.expressions.PropertyKeyName
+import org.neo4j.cypher.internal.v3_5.util.attribution.Attributes
+import org.neo4j.cypher.internal.v3_5.util.helpers.fixedPoint
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 class unnestEagerTest extends CypherFunSuite with LogicalPlanningTestSupport {
 
-  test("should unnest create node from rhs of apply") {
+  test("should unnest create from rhs of apply") {
     val lhs = newMockedLogicalPlan()
     val rhs = newMockedLogicalPlan()
-    val create = CreateNode(rhs, "a", Seq.empty, None)
+    val create = Create(rhs, nodes = List(CreateNode("a", Seq.empty, None)), Nil)
     val input = Apply(lhs, create)
 
-    rewrite(input) should equal(CreateNode(Apply(lhs, rhs), "a", Seq.empty, None))
-  }
-
-  test("should unnest create relationship from rhs of apply") {
-    val lhs = newMockedLogicalPlan()
-    val rhs = newMockedLogicalPlan()
-    val create = CreateRelationship(rhs, "a", "b", RelTypeName("R")(pos), "c", None)
-    val input = Apply(lhs, create)
-
-    rewrite(input) should equal(CreateRelationship(Apply(lhs, rhs), "a", "b", RelTypeName("R")(pos), "c", None))
+    rewrite(input) should equal(create.copy(source = Apply(lhs, rhs)))
   }
 
   test("should unnest delete relationship from rhs of apply") {

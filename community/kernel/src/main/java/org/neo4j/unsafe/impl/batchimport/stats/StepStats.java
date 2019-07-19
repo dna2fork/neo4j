@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -39,11 +39,6 @@ public class StepStats implements StatsProvider
         this.name = name;
         this.stillWorking = stillWorking;
         this.providers = new ArrayList<>( providers );
-    }
-
-    public boolean stillWorking()
-    {
-        return stillWorking;
     }
 
     @Override

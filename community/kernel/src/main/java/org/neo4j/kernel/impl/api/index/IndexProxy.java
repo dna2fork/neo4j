@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,21 +21,22 @@ package org.neo4j.kernel.impl.api.index;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.internal.kernel.api.InternalIndexState;
-import org.neo4j.internal.kernel.api.schema.SchemaDescriptorSupplier;
+import org.neo4j.internal.kernel.api.exceptions.schema.IndexNotFoundKernelException;
 import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.kernel.api.exceptions.index.IndexActivationFailedKernelException;
 import org.neo4j.kernel.api.exceptions.index.IndexEntryConflictException;
-import org.neo4j.kernel.api.exceptions.index.IndexNotFoundKernelException;
 import org.neo4j.kernel.api.exceptions.index.IndexPopulationFailedKernelException;
 import org.neo4j.kernel.api.exceptions.schema.UniquePropertyValueValidationException;
 import org.neo4j.kernel.api.index.IndexAccessor;
+import org.neo4j.kernel.api.index.IndexConfigProvider;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.index.PropertyAccessor;
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
+import org.neo4j.storageengine.api.NodePropertyAccessor;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
 import org.neo4j.storageengine.api.schema.IndexReader;
 import org.neo4j.storageengine.api.schema.PopulationProgress;
 import org.neo4j.values.storable.Value;
@@ -58,7 +59,7 @@ import org.neo4j.values.storable.Value;
  *
  * @see ContractCheckingIndexProxy
  */
-public interface IndexProxy
+public interface IndexProxy extends IndexConfigProvider
 {
     void start();
 
@@ -96,9 +97,11 @@ public interface IndexProxy
     IndexReader newReader() throws IndexNotFoundKernelException;
 
     /**
+     * @param time time to wait maximum. A value of 0 means indefinite wait.
+     * @param unit unit of time to wait.
      * @return {@code true} if the call waited, {@code false} if the condition was already reached.
      */
-    boolean awaitStoreScanCompleted() throws IndexPopulationFailedKernelException, InterruptedException;
+    boolean awaitStoreScanCompleted( long time, TimeUnit unit ) throws IndexPopulationFailedKernelException, InterruptedException;
 
     void activate() throws IndexActivationFailedKernelException;
 
@@ -114,7 +117,7 @@ public interface IndexProxy
 
     ResourceIterator<File> snapshotFiles() throws IOException;
 
-    default void verifyDeferredConstraints( PropertyAccessor accessor )  throws IndexEntryConflictException, IOException
+    default void verifyDeferredConstraints( NodePropertyAccessor accessor )  throws IndexEntryConflictException, IOException
     {
         throw new IllegalStateException( this.toString() );
     }

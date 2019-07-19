@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -29,7 +29,6 @@ import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.helpers.collection.BoundedIterable;
 import org.neo4j.helpers.collection.CombiningIterable;
 import org.neo4j.helpers.collection.Iterators;
-import org.neo4j.index.internal.gbptree.Layout;
 import org.neo4j.index.internal.gbptree.RecoveryCleanupWorkCollector;
 import org.neo4j.io.fs.FileSystemAbstraction;
 import org.neo4j.io.pagecache.IOLimiter;
@@ -38,14 +37,15 @@ import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexProvider;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.index.PropertyAccessor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
+import org.neo4j.storageengine.api.NodePropertyAccessor;
 import org.neo4j.kernel.impl.api.index.IndexUpdateMode;
 import org.neo4j.kernel.impl.api.index.sampling.IndexSamplingConfig;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 import org.neo4j.storageengine.api.schema.IndexReader;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 import static org.neo4j.helpers.collection.Iterators.concatResourceIterators;
+import static org.neo4j.index.internal.gbptree.GBPTree.NO_HEADER_WRITER;
 import static org.neo4j.kernel.impl.index.schema.fusion.FusionIndexBase.forAll;
 
 class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.PartAccessor<?>> implements IndexAccessor
@@ -62,9 +62,9 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     }
 
     @Override
-    public void drop() throws IOException
+    public void drop()
     {
-        forAll( NativeSchemaIndexAccessor::drop, this );
+        forAll( NativeIndexAccessor::drop, this );
     }
 
     @Override
@@ -74,9 +74,9 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     }
 
     @Override
-    public void force( IOLimiter ioLimiter ) throws IOException
+    public void force( IOLimiter ioLimiter )
     {
-        for ( NativeSchemaIndexAccessor part : this )
+        for ( NativeIndexAccessor part : this )
         {
             part.force( ioLimiter );
         }
@@ -89,10 +89,10 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     }
 
     @Override
-    public void close() throws IOException
+    public void close()
     {
         closeInstantiateCloseLock();
-        forAll( NativeSchemaIndexAccessor::close, this );
+        forAll( NativeIndexAccessor::close, this );
     }
 
     @Override
@@ -105,7 +105,7 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     public BoundedIterable<Long> newAllEntriesReader()
     {
         ArrayList<BoundedIterable<Long>> allEntriesReader = new ArrayList<>();
-        for ( NativeSchemaIndexAccessor<?,?> part : this )
+        for ( NativeIndexAccessor<?,?> part : this )
         {
             allEntriesReader.add( part.newAllEntriesReader() );
         }
@@ -146,7 +146,7 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     public ResourceIterator<File> snapshotFiles()
     {
         List<ResourceIterator<File>> snapshotFiles = new ArrayList<>();
-        for ( NativeSchemaIndexAccessor<?,?> part : this )
+        for ( NativeIndexAccessor<?,?> part : this )
         {
             snapshotFiles.add( part.snapshotFiles() );
         }
@@ -154,7 +154,7 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     }
 
     @Override
-    public void verifyDeferredConstraints( PropertyAccessor propertyAccessor )
+    public void verifyDeferredConstraints( NodePropertyAccessor nodePropertyAccessor )
     {
         // Not needed since uniqueness is verified automatically w/o cost for every update.
     }
@@ -162,30 +162,28 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
     @Override
     public boolean isDirty()
     {
-        return Iterators.stream( iterator() ).anyMatch( NativeSchemaIndexAccessor::isDirty );
+        return Iterators.stream( iterator() ).anyMatch( NativeIndexAccessor::isDirty );
     }
 
-    static class PartAccessor<KEY extends NativeSchemaKey<KEY>> extends NativeSchemaIndexAccessor<KEY, NativeSchemaValue>
+    static class PartAccessor<KEY extends NativeIndexSingleValueKey<KEY>> extends NativeIndexAccessor<KEY,NativeIndexValue>
     {
-        private final Layout<KEY,NativeSchemaValue> layout;
+        private final IndexLayout<KEY,NativeIndexValue> layout;
         private final IndexDescriptor descriptor;
-        private final IndexSamplingConfig samplingConfig;
 
         PartAccessor( PageCache pageCache, FileSystemAbstraction fs, TemporalIndexFiles.FileLayout<KEY> fileLayout,
-                RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, IndexProvider.Monitor monitor, StoreIndexDescriptor descriptor,
-                IndexSamplingConfig samplingConfig ) throws IOException
+                RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, IndexProvider.Monitor monitor, StoreIndexDescriptor descriptor )
         {
-            super( pageCache, fs, fileLayout.indexFile, fileLayout.layout, recoveryCleanupWorkCollector, monitor, descriptor, samplingConfig );
+            super( pageCache, fs, fileLayout.indexFile, fileLayout.layout, monitor, descriptor, NO_HEADER_WRITER );
             this.layout = fileLayout.layout;
             this.descriptor = descriptor;
-            this.samplingConfig = samplingConfig;
+            instantiateTree( recoveryCleanupWorkCollector, headerWriter );
         }
 
         @Override
         public TemporalIndexPartReader<KEY> newReader()
         {
             assertOpen();
-            return new TemporalIndexPartReader<>( tree, layout, samplingConfig, descriptor );
+            return new TemporalIndexPartReader<>( tree, layout, descriptor );
         }
     }
 
@@ -200,7 +198,7 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
         private final TemporalIndexFiles temporalIndexFiles;
 
         PartFactory( PageCache pageCache, FileSystemAbstraction fs, RecoveryCleanupWorkCollector recoveryCleanupWorkCollector, IndexProvider.Monitor monitor,
-                     StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, TemporalIndexFiles temporalIndexFiles )
+                StoreIndexDescriptor descriptor, IndexSamplingConfig samplingConfig, TemporalIndexFiles temporalIndexFiles )
         {
             this.pageCache = pageCache;
             this.fs = fs;
@@ -247,18 +245,19 @@ class TemporalIndexAccessor extends TemporalIndexCache<TemporalIndexAccessor.Par
             return createPartAccessor( temporalIndexFiles.duration() );
         }
 
-        private <KEY extends NativeSchemaKey<KEY>> PartAccessor<KEY> createPartAccessor( TemporalIndexFiles.FileLayout<KEY> fileLayout ) throws IOException
+        private <KEY extends NativeIndexSingleValueKey<KEY>> PartAccessor<KEY> createPartAccessor( TemporalIndexFiles.FileLayout<KEY> fileLayout )
+                throws IOException
         {
             if ( !fs.fileExists( fileLayout.indexFile ) )
             {
                 createEmptyIndex( fileLayout );
             }
-            return new PartAccessor<>( pageCache, fs, fileLayout, recoveryCleanupWorkCollector, monitor, descriptor, samplingConfig );
+            return new PartAccessor<>( pageCache, fs, fileLayout, recoveryCleanupWorkCollector, monitor, descriptor );
         }
 
-        private <KEY extends NativeSchemaKey<KEY>> void createEmptyIndex( TemporalIndexFiles.FileLayout<KEY> fileLayout ) throws IOException
+        private <KEY extends NativeIndexSingleValueKey<KEY>> void createEmptyIndex( TemporalIndexFiles.FileLayout<KEY> fileLayout ) throws IOException
         {
-            IndexPopulator populator = new TemporalIndexPopulator.PartPopulator<>( pageCache, fs, fileLayout, monitor, descriptor, samplingConfig );
+            IndexPopulator populator = new TemporalIndexPopulator.PartPopulator<>( pageCache, fs, fileLayout, monitor, descriptor );
             populator.create();
             populator.close( true );
         }

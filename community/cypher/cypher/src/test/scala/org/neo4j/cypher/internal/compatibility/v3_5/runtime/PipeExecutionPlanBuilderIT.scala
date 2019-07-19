@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,8 +22,7 @@ package org.neo4j.cypher.internal.compatibility.v3_5.runtime
 import org.mockito.Mockito.{atLeastOnce, verify, when}
 import org.neo4j.cypher.internal.compiler.v3_5.planner._
 import org.neo4j.cypher.internal.ir.v3_5._
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanContext
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Cardinalities
+import org.neo4j.cypher.internal.planner.v3_5.spi.{PlanContext, TokenContext}
 import org.neo4j.cypher.internal.runtime.interpreted.commands.convert.{CommunityExpressionConverter, ExpressionConverters}
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Literal
 import org.neo4j.cypher.internal.runtime.interpreted.commands.predicates.True
@@ -31,24 +30,24 @@ import org.neo4j.cypher.internal.runtime.interpreted.commands.values.KeyToken.Re
 import org.neo4j.cypher.internal.runtime.interpreted.commands.values.TokenType
 import org.neo4j.cypher.internal.runtime.interpreted.commands.{expressions => legacy}
 import org.neo4j.cypher.internal.runtime.interpreted.pipes._
+import org.neo4j.cypher.internal.v3_5.ast.semantics.SemanticTable
+import org.neo4j.cypher.internal.v3_5.expressions._
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.ast.semantics.SemanticTable
-import org.opencypher.v9_0.expressions._
-import org.opencypher.v9_0.util.RelTypeId
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.RelTypeId
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 import scala.collection.mutable
 
 class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTestSupport {
 
-  val pipeBuildContext = pipeExecutionPlanBuilderContext
-  val planContext: PlanContext = newMockedPlanContext
+  val pipeBuildContext: PipeExecutionBuilderContext = pipeExecutionPlanBuilderContext
+  val planContext: PlanContext = newMockedPlanContext()
 
   val patternRel = PatternRelationship("r", ("a", "b"), SemanticDirection.OUTGOING, Seq.empty, SimplePatternLength)
-  val converters = new ExpressionConverters(CommunityExpressionConverter)
+  val converters = new ExpressionConverters(CommunityExpressionConverter(TokenContext.EMPTY))
 
   private val planBuilder = {
-    val converters = new ExpressionConverters(CommunityExpressionConverter)
+    val converters = new ExpressionConverters(CommunityExpressionConverter(TokenContext.EMPTY))
     new PipeExecutionPlanBuilder(expressionConverters = converters, pipeBuilderFactory = InterpretedPipeBuilderFactory)
   }
 
@@ -61,7 +60,7 @@ class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTest
       Argument(), Map("42" -> SignedDecimalIntegerLiteral("42")(pos)))
     val pipe = build(logicalPlan)
 
-    pipe should equal(ProjectionPipe(ArgumentPipe()(), Map("42" -> legacy.Literal(42)))())
+    pipe should equal(ProjectionPipe(ArgumentPipe()(), Map("42" -> legacy.Literal(42))))
   }
 
   test("simple pattern query") {
@@ -93,7 +92,7 @@ class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTest
     val logicalPlan = NodeByIdSeek("n", ManySeekableArgs(astCollection), Set.empty)
     val pipe = build(logicalPlan)
 
-    pipe should equal(NodeByIdSeekPipe("n", ManySeekArgs(converters.toCommandExpression(astCollection)))())
+    pipe should equal(NodeByIdSeekPipe("n", ManySeekArgs(converters.toCommandExpression(logicalPlan.id, astCollection)))())
   }
 
   test("simple relationship by id seek query") {
@@ -115,7 +114,7 @@ class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTest
     val logicalPlan = DirectedRelationshipByIdSeek("r", ManySeekableArgs(astCollection), fromNode, toNode, Set.empty)
     val pipe = build(logicalPlan)
 
-    pipe should equal(DirectedRelationshipByIdSeekPipe("r", ManySeekArgs(converters.toCommandExpression(astCollection)), toNode, fromNode)())
+    pipe should equal(DirectedRelationshipByIdSeekPipe("r", ManySeekArgs(converters.toCommandExpression(logicalPlan.id, astCollection)), toNode, fromNode)())
   }
 
   test("simple undirected relationship by id seek query with multiple values") {
@@ -127,7 +126,7 @@ class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTest
     val logicalPlan = UndirectedRelationshipByIdSeek("r", ManySeekableArgs(astCollection), fromNode, toNode, Set.empty)
     val pipe = build(logicalPlan)
 
-    pipe should equal(UndirectedRelationshipByIdSeekPipe("r", ManySeekArgs(converters.toCommandExpression(astCollection)), toNode, fromNode)())
+    pipe should equal(UndirectedRelationshipByIdSeekPipe("r", ManySeekArgs(converters.toCommandExpression(logicalPlan.id, astCollection)), toNode, fromNode)())
   }
 
   test("simple cartesian product") {
@@ -205,6 +204,6 @@ class PipeExecutionPlanBuilderIT extends CypherFunSuite with LogicalPlanningTest
                                             mutable.Map("existing1" -> RelTypeId(1),
                                                         "existing2" -> RelTypeId(2),
                                                         "existing3" -> RelTypeId(3)))
-    PipeExecutionBuilderContext(semanticTable, readOnly = true, mock[Cardinalities])
+    PipeExecutionBuilderContext(semanticTable, readOnly = true)
   }
 }

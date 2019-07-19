@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.neo4j.graphdb.Node;
  * Abstraction of the priority queue used by Dijkstra in order to make (testing
  * of) alternative implementations easier.
  * @param <CostType>
- *            The datatype the path weigths are represented by.
+ *            The datatype the path weights are represented by.
  */
 public interface DijkstraPriorityQueue<CostType>
 {

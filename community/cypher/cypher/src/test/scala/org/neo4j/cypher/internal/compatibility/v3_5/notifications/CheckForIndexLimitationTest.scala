@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,14 +22,14 @@ package org.neo4j.cypher.internal.compatibility.v3_5.notifications
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.neo4j.cypher.internal.compatibility.v3_5.notification.checkForIndexLimitation
-import org.neo4j.cypher.internal.compiler.v3_5.SuboptimalIndexForWildcardQueryNotification
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport
+import org.neo4j.cypher.internal.compiler.v3_5.{SuboptimalIndexForConstainsQueryNotification, SuboptimalIndexForEndsWithQueryNotification}
 import org.neo4j.cypher.internal.planner.v3_5.spi
 import org.neo4j.cypher.internal.planner.v3_5.spi.{IndexDescriptor, IndexLimitation, PlanContext, SlowContains}
-import org.neo4j.cypher.internal.v3_5.logical.plans.{NodeIndexContainsScan, NodeIndexEndsWithScan}
-import org.opencypher.v9_0.expressions._
-import org.opencypher.v9_0.util.{LabelId, PropertyKeyId}
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.logical.plans._
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.{LabelId, PropertyKeyId}
 
 class CheckForIndexLimitationTest extends CypherFunSuite with LogicalPlanningTestSupport {
 
@@ -37,32 +37,32 @@ class CheckForIndexLimitationTest extends CypherFunSuite with LogicalPlanningTes
 
   test("should notify for NodeIndexContainsScan backed by limited index") {
     val planContext = mock[PlanContext]
-    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(spi.IndexDescriptor(1, 1, Set[IndexLimitation](SlowContains))))
-    val plan = NodeIndexContainsScan("id", LabelToken("label", LabelId(1)), PropertyKeyToken("prop", PropertyKeyId(1)), True()(pos), Set.empty)
+    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(spi.IndexDescriptor(LabelId(1), Seq(PropertyKeyId(1)), Set[IndexLimitation](SlowContains))))
+    val plan = IndexSeek("id:label(prop CONTAINS 'tron')")
 
-    checkForIndexLimitation(planContext)(plan) should equal(Set(SuboptimalIndexForWildcardQueryNotification("label", Seq("prop"))))
+    checkForIndexLimitation(planContext)(plan) should equal(Set(SuboptimalIndexForConstainsQueryNotification("label", Seq("prop"))))
   }
 
   test("should notify for NodeIndexEndsWithScan backed by limited index") {
     val planContext = mock[PlanContext]
-    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(1, 1, Set[IndexLimitation](SlowContains))))
-    val plan = NodeIndexEndsWithScan("id", LabelToken("label", LabelId(1)), PropertyKeyToken("prop", PropertyKeyId(1)), True()(pos), Set.empty)
+    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(LabelId(1), Seq(PropertyKeyId(1)), Set[IndexLimitation](SlowContains))))
+    val plan = IndexSeek("id:label(prop ENDS WITH 'tron')")
 
-    checkForIndexLimitation(planContext)(plan) should equal(Set(SuboptimalIndexForWildcardQueryNotification("label", Seq("prop"))))
+    checkForIndexLimitation(planContext)(plan) should equal(Set(SuboptimalIndexForEndsWithQueryNotification("label", Seq("prop"))))
   }
 
   test("should not notify for NodeIndexContainsScan backed by index with no limitations") {
     val planContext = mock[PlanContext]
-    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(1, 1, Set.empty[IndexLimitation])))
-    val plan = NodeIndexContainsScan("id", LabelToken("label", LabelId(1)), PropertyKeyToken("prop", PropertyKeyId(1)), True()(pos), Set.empty)
+    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(LabelId(1), Seq(PropertyKeyId(1)), Set.empty[IndexLimitation])))
+    val plan = IndexSeek("id:label(prop CONTAINS 'tron')")
 
     checkForIndexLimitation(planContext)(plan) should be(empty)
   }
 
   test("should not notify for NodeIndexEndsWithScan backed by index with no limitations") {
     val planContext = mock[PlanContext]
-    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(1, 1, Set.empty[IndexLimitation])))
-    val plan = NodeIndexEndsWithScan("id", LabelToken("label", LabelId(1)), PropertyKeyToken("prop", PropertyKeyId(1)), True()(pos), Set.empty)
+    when(planContext.indexGetForLabelAndProperties(anyString(), any())).thenReturn(Some(IndexDescriptor(LabelId(1), Seq(PropertyKeyId(1)), Set.empty[IndexLimitation])))
+    val plan = IndexSeek("id:label(prop ENDS WITH 'tron')")
 
     checkForIndexLimitation(planContext)(plan) should be(empty)
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,10 +22,15 @@ package org.neo4j.values.storable;
 public enum ValueCategory
 {
     NUMBER,
+    NUMBER_ARRAY,
     TEXT,
+    TEXT_ARRAY,
     GEOMETRY,
+    GEOMETRY_ARRAY,
     TEMPORAL,
-    REST,
+    TEMPORAL_ARRAY,
+    BOOLEAN,
+    BOOLEAN_ARRAY,
     UNKNOWN,
     NO_CATEGORY
 }

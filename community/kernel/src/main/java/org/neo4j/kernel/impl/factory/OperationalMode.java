@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,6 +24,7 @@ public enum OperationalMode
     // Note, these are sent verbatim via UDC if UDC is enabled
     unknown,
     single,
+    @Deprecated
     ha,
     core,
     read_replica

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,21 +26,24 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.stream.IntStream;
 
+import org.neo4j.internal.kernel.api.exceptions.schema.MalformedSchemaRuleException;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.internal.kernel.api.schema.constraints.ConstraintDescriptor;
-import org.neo4j.kernel.api.exceptions.schema.MalformedSchemaRuleException;
-import org.neo4j.kernel.api.index.IndexProvider;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
-import org.neo4j.kernel.api.schema.constaints.NodeKeyConstraintDescriptor;
-import org.neo4j.kernel.api.schema.constaints.UniquenessConstraintDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
+import org.neo4j.kernel.api.schema.constraints.NodeKeyConstraintDescriptor;
+import org.neo4j.kernel.api.schema.constraints.UniquenessConstraintDescriptor;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
+import org.neo4j.storageengine.api.EntityType;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.fail;
+import static org.neo4j.kernel.api.schema.SchemaDescriptorFactory.multiToken;
+import static org.neo4j.storageengine.api.schema.IndexDescriptorFactory.forSchema;
 import static org.neo4j.test.assertion.Assert.assertException;
 
 public class SchemaRuleSerializationTest extends SchemaRuleTestBase
@@ -51,9 +54,15 @@ public class SchemaRuleSerializationTest extends SchemaRuleTestBase
 
     StoreIndexDescriptor indexCompositeRegular = forLabel( LABEL_ID, PROPERTY_ID_1, PROPERTY_ID_2 ).withId( RULE_ID );
 
+    StoreIndexDescriptor indexMultiTokenRegular =
+            forSchema( multiToken( new int[]{LABEL_ID, LABEL_ID_2}, EntityType.NODE, new int[]{PROPERTY_ID_1, PROPERTY_ID_2} ) ).withId( RULE_ID );
+
     StoreIndexDescriptor indexCompositeUnique = uniqueForLabel( LABEL_ID, PROPERTY_ID_1, PROPERTY_ID_2 ).withIds( RULE_ID_2, RULE_ID );
 
     StoreIndexDescriptor indexBigComposite = forLabel( LABEL_ID, IntStream.range(1, 200).toArray() ).withId( RULE_ID );
+
+    StoreIndexDescriptor indexBigMultiToken =
+            forSchema( multiToken( IntStream.range( 1, 200 ).toArray(), EntityType.RELATIONSHIP, IntStream.range( 1, 200 ).toArray() ) ).withId( RULE_ID );
 
     ConstraintRule constraintExistsLabel = ConstraintRule.constraintRule( RULE_ID,
             ConstraintDescriptorFactory.existsForLabel( LABEL_ID, PROPERTY_ID_1 ) );
@@ -284,6 +293,13 @@ public class SchemaRuleSerializationTest extends SchemaRuleTestBase
     }
 
     @Test
+    public void shouldSerializeAndDeserializeMultiTokenRules() throws MalformedSchemaRuleException
+    {
+        assertSerializeAndDeserializeIndexRule( indexMultiTokenRegular );
+        assertSerializeAndDeserializeIndexRule( indexBigMultiToken );
+    }
+
+    @Test
     public void shouldReturnCorrectLengthForIndexRules()
     {
         assertCorrectLength( indexRegular );
@@ -426,7 +442,7 @@ public class SchemaRuleSerializationTest extends SchemaRuleTestBase
         // GIVEN
         long ruleId = 24;
         IndexDescriptor index = forLabel( 512, 4 );
-        IndexProvider.Descriptor indexProvider = new IndexProvider.Descriptor( "index-provider", "25.0" );
+        IndexProviderDescriptor indexProvider = new IndexProviderDescriptor( "index-provider", "25.0" );
         byte[] bytes = decodeBase64( serialized );
 
         // WHEN
@@ -447,7 +463,7 @@ public class SchemaRuleSerializationTest extends SchemaRuleTestBase
         long ruleId = 33;
         long constraintId = 11;
         IndexDescriptor index = TestIndexDescriptorFactory.uniqueForLabel( 61, 988 );
-        IndexProvider.Descriptor indexProvider = new IndexProvider.Descriptor( "index-provider", "25.0" );
+        IndexProviderDescriptor indexProvider = new IndexProviderDescriptor( "index-provider", "25.0" );
         byte[] bytes = decodeBase64( serialized );
 
         // WHEN

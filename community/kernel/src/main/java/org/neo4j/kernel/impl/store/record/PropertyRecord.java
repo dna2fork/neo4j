@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -46,7 +46,7 @@ public class PropertyRecord extends AbstractBaseRecord implements Iterable<Prope
     private long nextProp;
     private long prevProp;
     // Holds the purely physical representation of the loaded properties in this record. This is so that
-    // StorePropertyCursor is able to use this raw data without the rather heavy and bloated data structures
+    // RecordPropertyCursor is able to use this raw data without the rather heavy and bloated data structures
     // of PropertyBlock and thereabouts. So when a property record is loaded only these blocks are read,
     // the construction of all PropertyBlock instances are loaded lazily when they are first needed, loaded
     // by ensureBlocksLoaded().
@@ -138,6 +138,11 @@ public class PropertyRecord extends AbstractBaseRecord implements Iterable<Prope
             return entityId;
         }
         return -1;
+    }
+
+    public long getEntityId()
+    {
+        return entityId;
     }
 
     /**

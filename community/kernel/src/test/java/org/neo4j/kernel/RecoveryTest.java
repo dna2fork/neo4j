@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -59,6 +59,8 @@ import org.neo4j.kernel.impl.transaction.log.files.LogFiles;
 import org.neo4j.kernel.impl.transaction.log.files.LogFilesBuilder;
 import org.neo4j.kernel.impl.util.monitoring.SilentProgressReporter;
 import org.neo4j.kernel.lifecycle.LifeSupport;
+import org.neo4j.kernel.lifecycle.Lifecycle;
+import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.kernel.recovery.CorruptedLogsTruncator;
 import org.neo4j.kernel.recovery.DefaultRecoveryService;
@@ -105,15 +107,17 @@ public class RecoveryTest
     private final SimpleLogVersionRepository versionRepository = new SimpleLogVersionRepository();
     private LogFiles logFiles;
     private File storeDir;
+    private Lifecycle schemaLife;
 
     @Before
     public void setUp() throws Exception
     {
-        storeDir = this.directory.directory();
-        logFiles = LogFilesBuilder.builder( storeDir, fileSystemRule.get() )
+        storeDir = directory.storeDir();
+        logFiles = LogFilesBuilder.builder( directory.databaseLayout(), fileSystemRule.get() )
                 .withLogVersionRepository( logVersionRepository )
                 .withTransactionIdStore( transactionIdStore )
                 .build();
+        schemaLife = new LifecycleAdapter();
     }
 
     @Test
@@ -159,7 +163,7 @@ public class RecoveryTest
             final LogEntryReader<ReadableClosablePositionAwareChannel> reader = new VersionAwareLogEntryReader<>();
             LogTailScanner tailScanner = getTailScanner( logFiles, reader );
 
-            TransactionMetadataCache metadataCache = new TransactionMetadataCache( 100 );
+            TransactionMetadataCache metadataCache = new TransactionMetadataCache();
             LogicalTransactionStore txStore = new PhysicalLogicalTransactionStore( logFiles, metadataCache, reader,
                     monitors, false );
             CorruptedLogsTruncator logPruner = new CorruptedLogsTruncator( storeDir, logFiles, fileSystemRule.get() );
@@ -212,7 +216,7 @@ public class RecoveryTest
                         }
                     };
                 }
-            }, logPruner, monitor, SilentProgressReporter.INSTANCE, false ) );
+            }, logPruner, schemaLife, monitor, SilentProgressReporter.INSTANCE, false ) );
 
             life.start();
 
@@ -258,7 +262,7 @@ public class RecoveryTest
             final LogEntryReader<ReadableClosablePositionAwareChannel> reader = new VersionAwareLogEntryReader<>();
             LogTailScanner tailScanner = getTailScanner( logFiles, reader );
 
-            TransactionMetadataCache metadataCache = new TransactionMetadataCache( 100 );
+            TransactionMetadataCache metadataCache = new TransactionMetadataCache();
             LogicalTransactionStore txStore = new PhysicalLogicalTransactionStore( logFiles, metadataCache, reader,
                     monitors, false );
             CorruptedLogsTruncator logPruner = new CorruptedLogsTruncator( storeDir, logFiles, fileSystemRule.get() );
@@ -270,7 +274,7 @@ public class RecoveryTest
                 {
                     fail( "Recovery should not be required" );
                 }
-            }, logPruner, monitor, SilentProgressReporter.INSTANCE, false ) );
+            }, logPruner, schemaLife, monitor, SilentProgressReporter.INSTANCE, false ) );
 
             life.start();
 
@@ -333,7 +337,7 @@ public class RecoveryTest
     }
 
     @Test
-    public void shouldTruncateLogAfterLastCompleteTransactionAfterSuccessfullRecovery() throws Exception
+    public void shouldTruncateLogAfterLastCompleteTransactionAfterSuccessfulRecovery() throws Exception
     {
         // GIVEN
         File file = logFiles.getLogFileForVersion( logVersion );
@@ -364,7 +368,7 @@ public class RecoveryTest
     }
 
     @Test
-    public void shouldTellTransactionIdStoreAfterSuccessfullRecovery() throws Exception
+    public void shouldTellTransactionIdStoreAfterSuccessfulRecovery() throws Exception
     {
         // GIVEN
         File file = logFiles.getLogFileForVersion( logVersion );
@@ -413,7 +417,7 @@ public class RecoveryTest
             final LogEntryReader<ReadableClosablePositionAwareChannel> reader = new VersionAwareLogEntryReader<>();
             LogTailScanner tailScanner = getTailScanner( logFiles, reader );
 
-            TransactionMetadataCache metadataCache = new TransactionMetadataCache( 100 );
+            TransactionMetadataCache metadataCache = new TransactionMetadataCache();
             LogicalTransactionStore txStore = new PhysicalLogicalTransactionStore( logFiles, metadataCache, reader, monitors, false );
             CorruptedLogsTruncator logPruner = new CorruptedLogsTruncator( storeDir, logFiles, fileSystemRule.get() );
             life.add( new Recovery( new DefaultRecoveryService( storageEngine, tailScanner, transactionIdStore,
@@ -424,7 +428,7 @@ public class RecoveryTest
                 {
                     recoveryRequired.set( true );
                 }
-            }, logPruner, monitor, SilentProgressReporter.INSTANCE, false ) );
+            }, logPruner, schemaLife, monitor, SilentProgressReporter.INSTANCE, false ) );
 
             life.start();
         }

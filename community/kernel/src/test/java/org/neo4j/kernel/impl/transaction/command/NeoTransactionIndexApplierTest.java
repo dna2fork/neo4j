@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,24 +27,26 @@ import java.util.Collections;
 import java.util.function.Supplier;
 
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.kernel.api.index.IndexProvider.Descriptor;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.kernel.api.labelscan.LabelScanWriter;
-import org.neo4j.kernel.api.schema.index.IndexDescriptorFactory;
 import org.neo4j.kernel.impl.api.TransactionApplier;
 import org.neo4j.kernel.impl.api.TransactionToApply;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.api.index.IndexingUpdateService;
-import org.neo4j.kernel.impl.api.index.PropertyPhysicalToLogicalConverter;
 import org.neo4j.kernel.impl.store.NodeStore;
 import org.neo4j.kernel.impl.store.PropertyStore;
+import org.neo4j.kernel.impl.store.RelationshipStore;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
+import org.neo4j.storageengine.api.EntityType;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 import org.neo4j.util.concurrent.WorkSync;
 
 import static java.util.Collections.singleton;
 import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,7 +55,7 @@ import static org.neo4j.kernel.impl.store.record.DynamicRecord.dynamicRecord;
 
 public class NeoTransactionIndexApplierTest
 {
-    private static final Descriptor INDEX_DESCRIPTOR = new Descriptor( "in-memory", "1.0" );
+    private static final IndexProviderDescriptor INDEX_DESCRIPTOR = new IndexProviderDescriptor( "in-memory", "1.0" );
 
     private final IndexingService indexingService = mock( IndexingService.class );
     @SuppressWarnings( "unchecked" )
@@ -68,7 +70,7 @@ public class NeoTransactionIndexApplierTest
     public void setup()
     {
         when( transactionToApply.transactionId() ).thenReturn( 1L );
-        when( indexingService.convertToIndexUpdates( any() ) ).thenAnswer( o -> Iterables.empty() );
+        when( indexingService.convertToIndexUpdates( any(), eq( EntityType.NODE ) ) ).thenAnswer( o -> Iterables.empty() );
     }
 
     @Test
@@ -98,9 +100,8 @@ public class NeoTransactionIndexApplierTest
     private IndexBatchTransactionApplier newIndexTransactionApplier()
     {
         PropertyStore propertyStore = mock( PropertyStore.class );
-        return new IndexBatchTransactionApplier( indexingService,
-                labelScanStoreSynchronizer, indexUpdatesSync, mock( NodeStore.class ),
-                new PropertyPhysicalToLogicalConverter( propertyStore ) );
+        return new IndexBatchTransactionApplier( indexingService, labelScanStoreSynchronizer, indexUpdatesSync, mock( NodeStore.class ),
+                mock( RelationshipStore.class ), propertyStore, new IndexActivator( indexingService ) );
     }
 
     @Test
@@ -126,7 +127,7 @@ public class NeoTransactionIndexApplierTest
         verify( indexingService ).createIndexes( indexRule );
     }
 
-    private StoreIndexDescriptor indexRule( long ruleId, int labelId, int propertyId, Descriptor descriptor )
+    private StoreIndexDescriptor indexRule( long ruleId, int labelId, int propertyId, IndexProviderDescriptor descriptor )
     {
         return IndexDescriptorFactory.forSchema( forLabel( labelId, propertyId ), descriptor ).withId( ruleId );
     }

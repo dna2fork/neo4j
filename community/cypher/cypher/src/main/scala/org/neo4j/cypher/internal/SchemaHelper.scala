@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,26 +23,29 @@ import java.util.concurrent.atomic.AtomicLong
 
 import org.neo4j.cypher.CypherVersion
 import org.neo4j.kernel.api.query.SchemaIndexUsage
+import org.neo4j.kernel.impl.api.SchemaStateKey
 import org.neo4j.kernel.impl.query.TransactionalContext
 
 case class SchemaToken(x: Long) extends AnyVal
 
-class SchemaHelper(val queryCache: QueryCache[_,_]) {
+class SchemaHelper(val queryCache: QueryCache[_,_,_]) {
 
   private val schemaToken = new AtomicLong()
-
-  def readSchemaToken(tc: TransactionalContext): SchemaToken = {
-    val creator = new java.util.function.Function[SchemaHelper, SchemaToken]() {
-      def apply(key: SchemaHelper): SchemaToken = {
+  private val schemaStateKey = SchemaStateKey.newKey()
+  private val creator =
+    new java.util.function.Function[SchemaStateKey, SchemaToken]() {
+      def apply(key: SchemaStateKey): SchemaToken = {
         queryCache.clear()
         SchemaToken(schemaToken.incrementAndGet())
       }
     }
-    tc.kernelTransaction().schemaRead().schemaStateGetOrCreate(this, creator)
+
+  def readSchemaToken(tc: TransactionalContext): SchemaToken = {
+    tc.kernelTransaction().schemaRead().schemaStateGetOrCreate(schemaStateKey, creator)
   }
 
   def lockLabels(schemaTokenBefore: SchemaToken,
-                 executionPlan: ExecutionPlan,
+                 executionPlan: ExecutableQuery,
                  version: CypherVersion,
                  tc: TransactionalContext): Boolean = {
     val labelIds: Seq[Long] = extractPlanLabels(executionPlan, version, tc)
@@ -59,11 +62,11 @@ class SchemaHelper(val queryCache: QueryCache[_,_]) {
     true
   }
 
-  private def extractPlanLabels(plan: ExecutionPlan, version: CypherVersion, tc: TransactionalContext): Seq[Long] = {
+  private def extractPlanLabels(plan: ExecutableQuery, version: CypherVersion, tc: TransactionalContext): Seq[Long] = {
     import scala.collection.JavaConverters._
 
     def planLabels = {
-      plan.plannerInfo.indexes().asScala.collect { case item: SchemaIndexUsage => item.getLabelId.toLong }
+      plan.compilerInfo.indexes().asScala.collect { case item: SchemaIndexUsage => item.getLabelId.toLong }
     }
 
     def allLabels: Seq[Long] = {

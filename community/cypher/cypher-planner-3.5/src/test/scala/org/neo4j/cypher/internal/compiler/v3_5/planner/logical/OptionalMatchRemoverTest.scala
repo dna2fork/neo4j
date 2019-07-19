@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,19 +19,19 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
-import org.opencypher.v9_0.util.Rewritable._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.util.{DummyPosition, Rewriter}
+import org.neo4j.cypher.internal.v3_5.util.Rewritable._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.{DummyPosition, Rewriter}
 import org.neo4j.cypher.internal.compiler.v3_5.SyntaxExceptionCreator
 import org.neo4j.cypher.internal.compiler.v3_5.ast.convert.plannerQuery.StatementConverters.toUnionQuery
 import org.neo4j.cypher.internal.compiler.v3_5.planner._
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.OptionalMatchRemover.smallestGraphIncluding
-import org.opencypher.v9_0.ast.Query
-import org.opencypher.v9_0.rewriting.rewriters.flattenBooleanOperators
-import org.opencypher.v9_0.ast.semantics.{SemanticChecker, SemanticTable}
+import org.neo4j.cypher.internal.v3_5.ast.Query
+import org.neo4j.cypher.internal.v3_5.rewriting.rewriters.flattenBooleanOperators
+import org.neo4j.cypher.internal.v3_5.ast.semantics.{SemanticChecker, SemanticTable}
 import org.neo4j.cypher.internal.ir.v3_5._
-import org.opencypher.v9_0.expressions.SemanticDirection.BOTH
-import org.opencypher.v9_0.util.helpers.fixedPoint
+import org.neo4j.cypher.internal.v3_5.expressions.SemanticDirection.BOTH
+import org.neo4j.cypher.internal.v3_5.util.helpers.fixedPoint
 
 class OptionalMatchRemoverTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
 
@@ -177,6 +177,11 @@ class OptionalMatchRemoverTest extends CypherFunSuite with LogicalPlanningTestSu
       """MATCH (a)
           OPTIONAL MATCH (a)-[r:T1]->(b) WHERE (b)-[:T2]->(:A:B {foo: 'apa', id: 42})
           RETURN DISTINCT b as b""")
+
+  assert_that(
+    """OPTIONAL MATCH (a)-[r1]->(b)-[r2]->(c) WHERE a:A and b:B and c:C and a <> b
+          RETURN DISTINCT c as c""").
+    is_not_rewritten()
 
   assert_that(
     """MATCH (a)

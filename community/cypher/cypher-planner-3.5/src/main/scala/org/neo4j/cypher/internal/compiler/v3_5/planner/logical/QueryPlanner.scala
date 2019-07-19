@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,15 +22,16 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 import org.neo4j.cypher.internal.compiler.v3_5.phases._
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.Metrics.{CostModel, QueryGraphSolverInput}
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps.{LogicalPlanProducer, SystemOutCostLogger, devNullListener}
-import org.neo4j.cypher.internal.ir.v3_5.{PeriodicCommit, PlannerQuery, UnionQuery}
+import org.neo4j.cypher.internal.ir.v3_5._
 import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.{Cardinalities, Solveds}
-import org.neo4j.cypher.internal.v3_5.logical.plans.LogicalPlan
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.LOGICAL_PLANNING
-import org.opencypher.v9_0.frontend.phases.Phase
-import org.opencypher.v9_0.util.Cost
-import org.opencypher.v9_0.util.attribution.IdGen
+import org.neo4j.cypher.internal.v3_5.logical.plans._
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer.CompilationPhase.LOGICAL_PLANNING
+import org.neo4j.cypher.internal.v3_5.frontend.phases.Phase
+import org.neo4j.cypher.internal.v3_5.util.Cost
+import org.neo4j.cypher.internal.v3_5.util.attribution.IdGen
 
-case class QueryPlanner(planSingleQuery: ((PlannerQuery, LogicalPlanningContext, Solveds, Cardinalities, IdGen) => LogicalPlan) = PlanSingleQuery()) extends Phase[PlannerContext, LogicalPlanState, LogicalPlanState] {
+case class QueryPlanner(planSingleQuery: SingleQueryPlanner = PlanSingleQuery())
+  extends Phase[PlannerContext, LogicalPlanState, LogicalPlanState] {
 
 
   override def phase = LOGICAL_PLANNING
@@ -49,7 +50,8 @@ case class QueryPlanner(planSingleQuery: ((PlannerQuery, LogicalPlanningContext,
     else
       devNullListener
 
-    val logicalPlanProducer = LogicalPlanProducer(context.metrics.cardinality, from.solveds, from.cardinalities, context.logicalPlanIdGen)
+    val planningAttributes = from.planningAttributes
+    val logicalPlanProducer = LogicalPlanProducer(context.metrics.cardinality, planningAttributes, context.logicalPlanIdGen)
     val logicalPlanningContext = LogicalPlanningContext(
       planContext = context.planContext,
       logicalPlanProducer = logicalPlanProducer,
@@ -63,14 +65,18 @@ case class QueryPlanner(planSingleQuery: ((PlannerQuery, LogicalPlanningContext,
       config = QueryPlannerConfiguration.default.withUpdateStrategy(context.updateStrategy),
       legacyCsvQuoteEscaping = context.config.legacyCsvQuoteEscaping,
       csvBufferSize = context.config.csvBufferSize,
-      costComparisonListener = costComparisonListener
+      costComparisonListener = costComparisonListener,
+      planningAttributes = planningAttributes
     )
 
-    val (perCommit, logicalPlan) = plan(from.unionQuery, logicalPlanningContext, from.solveds, from.cardinalities, context.logicalPlanIdGen)
+    val (perCommit, logicalPlan, newLogicalPlanningContext) = plan(from.unionQuery, logicalPlanningContext, planningAttributes.solveds, planningAttributes.cardinalities, context.logicalPlanIdGen)
 
     costComparisonListener match {
       case debug: ReportCostComparisonsAsRows => debug.addPlan(from)
-      case _ => from.copy(maybePeriodicCommit = Some(perCommit), maybeLogicalPlan = Some(logicalPlan))
+      case _ => from.copy(
+        maybePeriodicCommit = Some(perCommit),
+        maybeLogicalPlan = Some(logicalPlan),
+        maybeSemanticTable = Some(newLogicalPlanningContext.semanticTable))
     }
   }
 
@@ -82,11 +88,11 @@ case class QueryPlanner(planSingleQuery: ((PlannerQuery, LogicalPlanningContext,
     context.metrics
   }
 
-  def plan(unionQuery: UnionQuery, context: LogicalPlanningContext, solveds: Solveds, cardinalities: Cardinalities, idGen: IdGen): (Option[PeriodicCommit], LogicalPlan) =
+  def plan(unionQuery: UnionQuery, context: LogicalPlanningContext, solveds: Solveds, cardinalities: Cardinalities, idGen: IdGen): (Option[PeriodicCommit], LogicalPlan, LogicalPlanningContext) =
     unionQuery match {
       case UnionQuery(queries, distinct, _, periodicCommitHint) =>
-        val plan = planQueries(queries, distinct, context, solveds, cardinalities, idGen)
-        (periodicCommitHint, createProduceResultOperator(plan, unionQuery, context))
+        val (plan, newContext) = planQueries(queries, distinct, context, idGen)
+        (periodicCommitHint, createProduceResultOperator(plan, unionQuery, newContext), newContext)
     }
 
   private def createProduceResultOperator(in: LogicalPlan,
@@ -94,26 +100,34 @@ case class QueryPlanner(planSingleQuery: ((PlannerQuery, LogicalPlanningContext,
                                           context: LogicalPlanningContext): LogicalPlan =
     context.logicalPlanProducer.planProduceResult(in, unionQuery.returns, context)
 
-  private def planQueries(queries: Seq[PlannerQuery], distinct: Boolean, context: LogicalPlanningContext, solveds: Solveds, cardinalities: Cardinalities, idGen: IdGen) = {
-    val logicalPlans: Seq[LogicalPlan] = queries.map(p => planSingleQuery(p, context, solveds, cardinalities, idGen))
+  private def planQueries(queries: Seq[PlannerQuery], distinct: Boolean, context: LogicalPlanningContext, idGen: IdGen) = {
+    val (logicalPlans, finalContext) = queries.foldLeft((Seq.empty[LogicalPlan], context)) {
+      case ((plans, currentContext), currentQuery) =>
+        val (singlePlan, newContext) = planSingleQuery(currentQuery, context, idGen)
+        (plans :+ singlePlan, newContext)
+    }
     val unionPlan = logicalPlans.reduce[LogicalPlan] {
-      case (p1, p2) => context.logicalPlanProducer.planUnion(p1, p2, context)
+      case (p1, p2) => finalContext.logicalPlanProducer.planUnion(p1, p2, finalContext)
     }
 
     if (distinct)
-      context.logicalPlanProducer.planDistinctStar(unionPlan, context)
+      (finalContext.logicalPlanProducer.planDistinctStar(unionPlan, finalContext), finalContext)
     else
-      unionPlan
+      (unionPlan, finalContext)
   }
 }
 
-case object planPart extends ((PlannerQuery, LogicalPlanningContext, Solveds, Cardinalities) => LogicalPlan) {
+case object planPart extends PartPlanner {
 
-  def apply(query: PlannerQuery, context: LogicalPlanningContext, solveds: Solveds, cardinalities: Cardinalities): LogicalPlan = {
+  def apply(query: PlannerQuery, context: LogicalPlanningContext): LogicalPlan = {
     val ctx = query.preferredStrictness match {
       case Some(mode) if !context.input.strictness.contains(mode) => context.withStrictness(mode)
       case _ => context
     }
-    ctx.strategy.plan(query.queryGraph, ctx, solveds, cardinalities)
+    ctx.strategy.plan(query.queryGraph, query.interestingOrder, ctx)
   }
+}
+
+trait SingleQueryPlanner {
+  def apply(in: PlannerQuery, context: LogicalPlanningContext, idGen: IdGen): (LogicalPlan, LogicalPlanningContext)
 }

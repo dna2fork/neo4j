@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -41,6 +41,7 @@ public class StringsLibrary
             ";먵�?裬岰鷲趫\uA8C5얱㓙髿ᚳᬼ≩�?� ",
             "\u001cӳ",
             "abcdefghijklmnopqrstuvwxyzåäöABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ 1234567890-´!\"@#$%^&*()_+",
+            "йцукенгшщзхъфывапролджэячсмитьбю"
             // TODO longer lorem ipsum string?
     };
 }

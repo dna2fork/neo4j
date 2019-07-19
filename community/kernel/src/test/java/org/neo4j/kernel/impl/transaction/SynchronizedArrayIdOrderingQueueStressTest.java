@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -43,8 +43,7 @@ public class SynchronizedArrayIdOrderingQueueStressTest
     public void shouldWithstandHighStressAndStillKeepOrder() throws Exception
     {
         // GIVEN an ordering queue w/ low initial size as to also exercise resize under stress
-        VerifyingIdOrderingQueue queue = new VerifyingIdOrderingQueue(
-                new SynchronizedArrayIdOrderingQueue( 5 ) );
+        VerifyingIdOrderingQueue queue = new VerifyingIdOrderingQueue( new SynchronizedArrayIdOrderingQueue() );
         Committer[] committers = new Committer[20];
         CountDownLatch readySignal = new CountDownLatch( committers.length );
         AtomicBoolean end = new AtomicBoolean();

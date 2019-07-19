@@ -3,14 +3,14 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>3.5.0-SNAPSHOT</version>
+    <version>3.5.8-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.neo4j.build</groupId>
   <artifactId>community-build</artifactId>
-  <version>3.5.0-SNAPSHOT</version>
+  <version>3.5.8-SNAPSHOT</version>
 
   <name>Neo4j - Community Build</name>
   <packaging>pom</packaging>
@@ -22,15 +22,18 @@
   </properties>
 
   <modules>
+    <module>annotation-processors</module>
+    <module>zstd-proxy</module>
     <module>common</module>
     <module>configuration</module>
     <module>resource</module>
     <module>collections</module>
-      <module>concurrent</module>
+    <module>concurrent</module>
     <module>graphdb-api</module>
     <module>procedure-api</module>
     <module>unsafe</module>
     <module>io</module>
+    <module>diagnostics</module>
     <module>kernel-api</module>
     <module>csv</module>
     <module>logging</module>
@@ -41,12 +44,13 @@
     <module>kernel</module>
     <module>jmx</module>
     <module>udc</module>
+    <module>legacy</module>
     <module>lucene-index</module>
     <module>lucene-index-upgrade</module>
+    <module>fulltext-index</module>
     <module>graph-algo</module>
     <module>neo4j</module>
     <module>neo4j-community</module>
-    <module>shell</module>
     <module>import-tool</module>
     <module>server-api</module>
     <module>bolt</module>
@@ -61,6 +65,8 @@
     <module>values</module>
     <module>ssl</module>
     <module>spatial-index</module>
+    <module>community-it</module>
+    <module>data-collector</module>
   </modules>
 
   <licenses>

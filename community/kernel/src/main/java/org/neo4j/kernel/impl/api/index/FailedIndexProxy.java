@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,15 +20,16 @@
 package org.neo4j.kernel.impl.api.index;
 
 import java.io.File;
-import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.internal.kernel.api.InternalIndexState;
 import org.neo4j.kernel.api.exceptions.index.IndexPopulationFailedKernelException;
 import org.neo4j.kernel.api.index.IndexPopulator;
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
 import org.neo4j.logging.Log;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
 import org.neo4j.values.storable.Value;
 
 import static org.neo4j.helpers.collection.Iterators.emptyResourceIterator;
@@ -71,7 +72,7 @@ public class FailedIndexProxy extends AbstractSwallowingIndexProxy
     }
 
     @Override
-    public boolean awaitStoreScanCompleted() throws IndexPopulationFailedKernelException
+    public boolean awaitStoreScanCompleted( long time, TimeUnit unit ) throws IndexPopulationFailedKernelException
     {
         throw failureCause();
     }
@@ -102,5 +103,11 @@ public class FailedIndexProxy extends AbstractSwallowingIndexProxy
     public ResourceIterator<File> snapshotFiles()
     {
         return emptyResourceIterator();
+    }
+
+    @Override
+    public Map<String,Value> indexConfig()
+    {
+        return populator.indexConfig();
     }
 }

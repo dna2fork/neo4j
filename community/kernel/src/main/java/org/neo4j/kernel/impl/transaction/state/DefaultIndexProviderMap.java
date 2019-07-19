@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,37 +19,44 @@
  */
 package org.neo4j.kernel.impl.transaction.state;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Consumer;
 
+import org.neo4j.graphdb.DependencyResolver;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.kernel.api.index.IndexProvider;
-import org.neo4j.kernel.api.index.IndexProvider.Descriptor;
+import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.index.IndexProviderMap;
 import org.neo4j.kernel.impl.api.index.IndexProviderNotFoundException;
+import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 
-public class DefaultIndexProviderMap implements IndexProviderMap
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+
+public class DefaultIndexProviderMap extends LifecycleAdapter implements IndexProviderMap
 {
-    private final IndexProvider defaultIndexProvider;
-    private final Map<Descriptor,IndexProvider> indexProvidersByDescriptor = new HashMap<>();
+    private final Map<IndexProviderDescriptor,IndexProvider> indexProvidersByDescriptor = new HashMap<>();
     private final Map<String,IndexProvider> indexProvidersByName = new HashMap<>();
+    private final DependencyResolver dependencies;
+    private IndexProvider defaultIndexProvider;
+    private final Config config;
 
-    public DefaultIndexProviderMap( IndexProvider defaultIndexProvider )
+    public DefaultIndexProviderMap( DependencyResolver dependencies, Config config )
     {
-        this( defaultIndexProvider, Collections.emptyList() );
+        this.dependencies = dependencies;
+        this.config = config;
     }
 
-    public DefaultIndexProviderMap( IndexProvider defaultIndexProvider,
-            Iterable<IndexProvider> additionalIndexProviders )
+    @Override
+    public void init()
     {
-        this.defaultIndexProvider = defaultIndexProvider;
-        put( defaultIndexProvider.getProviderDescriptor(), defaultIndexProvider );
-        for ( IndexProvider provider : additionalIndexProviders )
+        Iterable<? extends IndexProvider> indexProviders = dependencies.resolveTypeDependencies( IndexProvider.class );
+        for ( IndexProvider provider : indexProviders )
         {
-            Descriptor providerDescriptor = provider.getProviderDescriptor();
-            Objects.requireNonNull( providerDescriptor );
+            IndexProviderDescriptor providerDescriptor = provider.getProviderDescriptor();
+            requireNonNull( providerDescriptor );
             IndexProvider existing = put( providerDescriptor, provider );
             if ( existing != null )
             {
@@ -57,54 +64,72 @@ public class DefaultIndexProviderMap implements IndexProviderMap
                         providerDescriptor + ". First loaded " + existing + " then " + provider );
             }
         }
-    }
-
-    private IndexProvider put( Descriptor providerDescriptor, IndexProvider provider )
-    {
-        IndexProvider existing = indexProvidersByDescriptor.putIfAbsent( providerDescriptor, provider );
-        indexProvidersByName.putIfAbsent( providerDescriptor.name(), provider );
-        return existing;
+        initDefaultProvider();
     }
 
     @Override
     public IndexProvider getDefaultProvider()
     {
+        assertInit();
         return defaultIndexProvider;
     }
 
     @Override
-    public IndexProvider lookup( Descriptor providerDescriptor )
+    public IndexProvider lookup( IndexProviderDescriptor providerDescriptor )
     {
+        assertInit();
         IndexProvider provider = indexProvidersByDescriptor.get( providerDescriptor );
-        if ( provider != null )
-        {
-            return provider;
-        }
-
-        throw notFound( providerDescriptor );
+        assertProviderFound( provider, providerDescriptor.name() );
+        return provider;
     }
 
     @Override
     public IndexProvider lookup( String providerDescriptorName ) throws IndexProviderNotFoundException
     {
+        assertInit();
         IndexProvider provider = indexProvidersByName.get( providerDescriptorName );
-        if ( provider != null )
-        {
-            return provider;
-        }
-
-        throw notFound( providerDescriptorName );
-    }
-
-    private IllegalArgumentException notFound( Object key )
-    {
-        return new IllegalArgumentException( "Tried to get index provider for an existing index with provider " + key +
-                " whereas available providers in this session being " + indexProvidersByDescriptor + ", and default being " + defaultIndexProvider );
+        assertProviderFound( provider, providerDescriptorName );
+        return provider;
     }
 
     @Override
     public void accept( Consumer<IndexProvider> visitor )
     {
+        assertInit();
         indexProvidersByDescriptor.values().forEach( visitor );
+    }
+
+    private void assertProviderFound( IndexProvider provider, String providerDescriptorName )
+    {
+        if ( provider == null )
+        {
+            throw new IndexProviderNotFoundException( "Tried to get index provider with name " + providerDescriptorName +
+                    " whereas available providers in this session being " + indexProvidersByName.keySet() + ", and default being " +
+                    defaultIndexProvider.getProviderDescriptor().name() );
+        }
+    }
+
+    private void assertInit()
+    {
+        if ( defaultIndexProvider == null )
+        {
+            throw new IllegalStateException( "DefaultIndexProviderMap must be part of life cycle and initialized before getting providers." );
+        }
+    }
+
+    private void initDefaultProvider()
+    {
+        String providerName = config.get( GraphDatabaseSettings.default_schema_provider );
+        IndexProvider configuredDefaultProvider = indexProvidersByName.get( providerName );
+        requireNonNull( configuredDefaultProvider, () -> format( "Configured default provider: `%s` not found. Available index providers: %s.", providerName,
+                indexProvidersByName.keySet().toString() ) );
+        defaultIndexProvider = configuredDefaultProvider;
+    }
+
+    private IndexProvider put( IndexProviderDescriptor providerDescriptor, IndexProvider provider )
+    {
+        IndexProvider existing = indexProvidersByDescriptor.putIfAbsent( providerDescriptor, provider );
+        indexProvidersByName.putIfAbsent( providerDescriptor.name(), provider );
+        return existing;
     }
 }

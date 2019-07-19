@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -148,6 +148,7 @@ public class SimpleLongLayout extends TestLayout<MutableLong,MutableLong>
     public void writeKey( PageCursor cursor, MutableLong key )
     {
         cursor.putLong( key.longValue() );
+        cursor.putBytes( keyPadding, (byte) 0 );
     }
 
     @Override
@@ -160,6 +161,7 @@ public class SimpleLongLayout extends TestLayout<MutableLong,MutableLong>
     public void readKey( PageCursor cursor, MutableLong into, int keySize )
     {
         into.setValue( cursor.getLong() );
+        cursor.getBytes( new byte[keyPadding] );
     }
 
     @Override

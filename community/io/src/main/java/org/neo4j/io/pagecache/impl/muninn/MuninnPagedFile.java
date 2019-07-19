@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -70,7 +70,7 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
 
     final PageSwapper swapper;
     final int swapperId;
-    private final CursorPool cursorPool;
+    private final CursorFactory cursorFactory;
 
     // Guarded by the monitor lock on MuninnPageCache (map and unmap)
     private boolean deleteOnClose;
@@ -113,16 +113,19 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
      * access to thread local version context
      * @param createIfNotExists should create file if it does not exists
      * @param truncateExisting should truncate file if it exists
+     * @param noChannelStriping when true, overrides channel striping behaviour,
+     * setting it to a single channel per mapped file.
      * @throws IOException If the {@link PageSwapper} could not be created.
      */
     MuninnPagedFile( File file, MuninnPageCache pageCache, int filePageSize, PageSwapperFactory swapperFactory,
             PageCacheTracer pageCacheTracer, PageCursorTracerSupplier pageCursorTracerSupplier,
-            VersionContextSupplier versionContextSupplier, boolean createIfNotExists, boolean truncateExisting ) throws IOException
+            VersionContextSupplier versionContextSupplier, boolean createIfNotExists, boolean truncateExisting,
+            boolean noChannelStriping ) throws IOException
     {
         super( pageCache.pages );
         this.pageCache = pageCache;
         this.filePageSize = filePageSize;
-        this.cursorPool = new CursorPool( this, pageCursorTracerSupplier, pageCacheTracer, versionContextSupplier );
+        this.cursorFactory = new CursorFactory( this, pageCursorTracerSupplier, pageCacheTracer, versionContextSupplier );
         this.pageCacheTracer = pageCacheTracer;
         this.pageFaultLatches = new LatchMap();
 
@@ -143,7 +146,7 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
         // filled with UNMAPPED_TTE values, and then finally assigns the new outer array to the translationTable field
         // and releases the resize lock.
         PageEvictionCallback onEviction = this::evictPage;
-        swapper = swapperFactory.createPageSwapper( file, filePageSize, onEviction, createIfNotExists );
+        swapper = swapperFactory.createPageSwapper( file, filePageSize, onEviction, createIfNotExists, noChannelStriping );
         if ( truncateExisting )
         {
             swapper.truncate();
@@ -175,11 +178,11 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
         MuninnPageCursor cursor;
         if ( lockFlags == PF_SHARED_READ_LOCK )
         {
-            cursor = cursorPool.takeReadCursor( pageId, pf_flags );
+            cursor = cursorFactory.takeReadCursor( pageId, pf_flags );
         }
         else if ( lockFlags == PF_SHARED_WRITE_LOCK )
         {
-            cursor = cursorPool.takeWriteCursor( pageId, pf_flags );
+            cursor = cursorFactory.takeWriteCursor( pageId, pf_flags );
         }
         else
         {
@@ -258,7 +261,7 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
     @Override
     public void flushAndForce() throws IOException
     {
-        flushAndForce( IOLimiter.unlimited() );
+        flushAndForce( IOLimiter.UNLIMITED );
     }
 
     @Override
@@ -288,7 +291,7 @@ final class MuninnPagedFile extends PageList implements PagedFile, Flushable
         }
         try ( MajorFlushEvent flushEvent = pageCacheTracer.beginFileFlush( swapper ) )
         {
-            flushAndForceInternal( flushEvent.flushEventOpportunity(), true, IOLimiter.unlimited() );
+            flushAndForceInternal( flushEvent.flushEventOpportunity(), true, IOLimiter.UNLIMITED );
             syncDevice();
         }
         pageCache.clearEvictorException();

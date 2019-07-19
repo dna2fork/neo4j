@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -31,7 +31,6 @@ import org.neo4j.consistency.store.synthetic.IndexEntry;
 import org.neo4j.consistency.store.synthetic.LabelScanDocument;
 import org.neo4j.kernel.impl.annotations.Documented;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
 import org.neo4j.kernel.impl.store.record.NeoStoreRecord;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
@@ -42,6 +41,7 @@ import org.neo4j.kernel.impl.store.record.RelationshipGroupRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 public interface ConsistencyReport
 {
@@ -116,6 +116,9 @@ public interface ConsistencyReport
 
         @Documented( "The property chain does not contain a property that is mandatory for this entity." )
         void missingMandatoryProperty( int key );
+
+        @Documented( "The property record points to a previous record in the chain, making it a circular reference." )
+        void propertyChainContainsCircularReference( PropertyRecord propertyRecord );
     }
 
     interface NeoStoreConsistencyReport extends PrimitiveConsistencyReport
@@ -268,6 +271,12 @@ public interface ConsistencyReport
 
         @Documented( "The next record in the target chain does not have this record as its previous record." )
         void targetNextDoesNotReferenceBack( RelationshipRecord relationship );
+
+        @Documented( "This relationship was not found in the expected index." )
+        void notIndexed( StoreIndexDescriptor index, Object[] propertyValues );
+
+        @Documented( "This relationship was found in the expected index, although multiple times" )
+        void indexedMultipleTimes( StoreIndexDescriptor index, Object[] propertyValues, long count );
     }
 
     interface PropertyConsistencyReport extends ConsistencyReport
@@ -479,6 +488,13 @@ public interface ConsistencyReport
         void nodeLabelNotInIndex( NodeRecord referredNodeRecord, long missingLabelId );
     }
 
+    interface RelationshipInUseWithCorrectRelationshipTypeReport extends ConsistencyReport
+    {
+        void relationshipNotInUse( RelationshipRecord referredRelationshipRecord );
+
+        void relationshipDoesNotHaveExpectedRelationshipType( RelationshipRecord referredRelationshipRecord, long expectedRelationshipTypeId );
+    }
+
     interface LabelScanConsistencyReport extends NodeInUseWithCorrectLabelsReport
     {
         @Override
@@ -498,15 +514,23 @@ public interface ConsistencyReport
         void dirtyIndex();
     }
 
-    interface IndexConsistencyReport extends NodeInUseWithCorrectLabelsReport
+    interface IndexConsistencyReport extends NodeInUseWithCorrectLabelsReport, RelationshipInUseWithCorrectRelationshipTypeReport
     {
         @Override
         @Documented( "This index entry refers to a node record that is not in use." )
         void nodeNotInUse( NodeRecord referredNodeRecord );
 
         @Override
+        @Documented( "This index entry refers to a relationship record that is not in use." )
+        void relationshipNotInUse( RelationshipRecord referredRelationshipRecord );
+
+        @Override
         @Documented( "This index entry refers to a node that does not have the expected label." )
         void nodeDoesNotHaveExpectedLabel( NodeRecord referredNodeRecord, long expectedLabelId );
+
+        @Override
+        @Documented( "This index entry refers to a relationship that does not have the expected relationship type." )
+        void relationshipDoesNotHaveExpectedRelationshipType( RelationshipRecord referredRelationshipRecord, long expectedRelationshipTypeId );
 
         @Override
         @Documented( "This node record has a label that is not found in the index for this node" )
@@ -515,6 +539,9 @@ public interface ConsistencyReport
         @Warning
         @Documented( "Index was not properly shutdown and rebuild is required." )
         void dirtyIndex();
+
+        @Documented( "This index entry is for a relationship index, but it is used as a constraint index" )
+        void relationshipConstraintIndex();
     }
 
     interface CountsConsistencyReport extends ConsistencyReport

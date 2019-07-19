@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,22 +24,22 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.index.internal.gbptree.RecoveryCleanupWorkCollector;
+import org.neo4j.internal.diagnostics.DiagnosticsManager;
 import org.neo4j.internal.kernel.api.TokenNameLookup;
 import org.neo4j.internal.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.internal.kernel.api.exceptions.schema.ConstraintValidationException;
+import org.neo4j.internal.kernel.api.exceptions.schema.CreateConstraintFailureException;
 import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.io.layout.DatabaseLayout;
 import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.tracing.cursor.context.VersionContextSupplier;
 import org.neo4j.kernel.api.exceptions.TransactionApplyKernelException;
-import org.neo4j.kernel.api.exceptions.schema.CreateConstraintFailureException;
-import org.neo4j.kernel.api.index.IndexProvider;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
 import org.neo4j.kernel.api.labelscan.LabelScanWriter;
 import org.neo4j.kernel.api.labelscan.LoggingMonitor;
@@ -51,7 +51,7 @@ import org.neo4j.kernel.impl.api.CountsRecordState;
 import org.neo4j.kernel.impl.api.CountsStoreBatchTransactionApplier;
 import org.neo4j.kernel.impl.api.ExplicitBatchIndexApplier;
 import org.neo4j.kernel.impl.api.ExplicitIndexApplierLookup;
-import org.neo4j.kernel.impl.api.ExplicitIndexProviderLookup;
+import org.neo4j.kernel.impl.api.ExplicitIndexProvider;
 import org.neo4j.kernel.impl.api.IndexReaderFactory;
 import org.neo4j.kernel.impl.api.SchemaState;
 import org.neo4j.kernel.impl.api.TransactionApplier;
@@ -61,15 +61,12 @@ import org.neo4j.kernel.impl.api.index.IndexStoreView;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.api.index.IndexingServiceFactory;
 import org.neo4j.kernel.impl.api.index.IndexingUpdateService;
-import org.neo4j.kernel.impl.api.index.PropertyPhysicalToLogicalConverter;
 import org.neo4j.kernel.impl.api.scan.FullLabelStream;
 import org.neo4j.kernel.impl.api.store.SchemaCache;
 import org.neo4j.kernel.impl.cache.BridgingCacheAccess;
 import org.neo4j.kernel.impl.constraints.ConstraintSemantics;
 import org.neo4j.kernel.impl.core.CacheAccessBackDoor;
-import org.neo4j.kernel.impl.core.LabelTokenHolder;
-import org.neo4j.kernel.impl.core.PropertyKeyTokenHolder;
-import org.neo4j.kernel.impl.core.RelationshipTypeTokenHolder;
+import org.neo4j.kernel.impl.core.TokenHolders;
 import org.neo4j.kernel.impl.factory.OperationalMode;
 import org.neo4j.kernel.impl.index.IndexConfigStore;
 import org.neo4j.kernel.impl.index.labelscan.NativeLabelScanStore;
@@ -86,19 +83,19 @@ import org.neo4j.kernel.impl.store.id.IdGeneratorFactory;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 import org.neo4j.kernel.impl.transaction.command.CacheInvalidationBatchTransactionApplier;
 import org.neo4j.kernel.impl.transaction.command.HighIdBatchTransactionApplier;
+import org.neo4j.kernel.impl.transaction.command.IndexActivator;
 import org.neo4j.kernel.impl.transaction.command.IndexBatchTransactionApplier;
 import org.neo4j.kernel.impl.transaction.command.IndexUpdatesWork;
 import org.neo4j.kernel.impl.transaction.command.LabelUpdateWork;
 import org.neo4j.kernel.impl.transaction.command.NeoStoreBatchTransactionApplier;
 import org.neo4j.kernel.impl.transaction.state.IntegrityValidator;
-import org.neo4j.kernel.impl.transaction.state.TransactionRecordState;
 import org.neo4j.kernel.impl.transaction.state.storeview.DynamicIndexStoreView;
 import org.neo4j.kernel.impl.transaction.state.storeview.NeoStoreIndexStoreView;
 import org.neo4j.kernel.impl.util.DependencySatisfier;
 import org.neo4j.kernel.impl.util.IdOrderingQueue;
-import org.neo4j.kernel.info.DiagnosticsManager;
 import org.neo4j.kernel.internal.DatabaseHealth;
 import org.neo4j.kernel.lifecycle.Lifecycle;
+import org.neo4j.kernel.lifecycle.LifecycleAdapter;
 import org.neo4j.kernel.monitoring.Monitors;
 import org.neo4j.kernel.spi.explicitindex.IndexImplementation;
 import org.neo4j.logging.LogProvider;
@@ -109,12 +106,12 @@ import org.neo4j.storageengine.api.StorageCommand;
 import org.neo4j.storageengine.api.StorageEngine;
 import org.neo4j.storageengine.api.StorageReader;
 import org.neo4j.storageengine.api.StoreFileMetadata;
+import org.neo4j.storageengine.api.StoreId;
 import org.neo4j.storageengine.api.TransactionApplicationMode;
 import org.neo4j.storageengine.api.lock.ResourceLocker;
 import org.neo4j.storageengine.api.schema.SchemaRule;
 import org.neo4j.storageengine.api.txstate.ReadableTransactionState;
 import org.neo4j.storageengine.api.txstate.TxStateVisitor;
-import org.neo4j.util.FeatureToggles;
 import org.neo4j.util.VisibleForTesting;
 import org.neo4j.util.concurrent.WorkSync;
 
@@ -124,14 +121,9 @@ import static org.neo4j.storageengine.api.TransactionApplicationMode.REVERSE_REC
 
 public class RecordStorageEngine implements StorageEngine, Lifecycle
 {
-    private static final boolean takePropertyReadLocks = FeatureToggles.flag(
-            RecordStorageEngine.class, "propertyReadLocks", false );
-
     private final IndexingService indexingService;
     private final NeoStores neoStores;
-    private final PropertyKeyTokenHolder propertyKeyTokenHolder;
-    private final RelationshipTypeTokenHolder relationshipTypeTokenHolder;
-    private final LabelTokenHolder labelTokenHolder;
+    private final TokenHolders tokenHolders;
     private final DatabaseHealth databaseHealth;
     private final IndexConfigStore indexConfigStore;
     private final SchemaCache schemaCache;
@@ -149,21 +141,19 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     private final CommandReaderFactory commandReaderFactory;
     private final WorkSync<IndexingUpdateService,IndexUpdatesWork> indexUpdatesSync;
     private final IndexStoreView indexStoreView;
-    private final ExplicitIndexProviderLookup explicitIndexProviderLookup;
-    private final PropertyPhysicalToLogicalConverter indexUpdatesConverter;
+    private final ExplicitIndexProvider explicitIndexProviderLookup;
     private final IdController idController;
     private final int denseNodeThreshold;
     private final int recordIdBatchSize;
 
     public RecordStorageEngine(
-            File storeDir,
+            DatabaseLayout databaseLayout,
             Config config,
             PageCache pageCache,
             FileSystemAbstraction fs,
             LogProvider logProvider,
-            PropertyKeyTokenHolder propertyKeyTokenHolder,
-            LabelTokenHolder labelTokens,
-            RelationshipTypeTokenHolder relationshipTypeTokens,
+            LogProvider userLogProvider,
+            TokenHolders tokenHolders,
             SchemaState schemaState,
             ConstraintSemantics constraintSemantics,
             JobScheduler scheduler,
@@ -172,7 +162,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
             IndexProviderMap indexProviderMap,
             IndexingService.Monitor indexingServiceMonitor,
             DatabaseHealth databaseHealth,
-            ExplicitIndexProviderLookup explicitIndexProviderLookup,
+            ExplicitIndexProvider explicitIndexProvider,
             IndexConfigStore indexConfigStore,
             IdOrderingQueue explicitIndexTransactionOrdering,
             IdGeneratorFactory idGeneratorFactory,
@@ -182,46 +172,42 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
             OperationalMode operationalMode,
             VersionContextSupplier versionContextSupplier )
     {
-        this.propertyKeyTokenHolder = propertyKeyTokenHolder;
-        this.relationshipTypeTokenHolder = relationshipTypeTokens;
-        this.labelTokenHolder = labelTokens;
+        this.tokenHolders = tokenHolders;
         this.schemaState = schemaState;
         this.lockService = lockService;
         this.databaseHealth = databaseHealth;
-        this.explicitIndexProviderLookup = explicitIndexProviderLookup;
+        this.explicitIndexProviderLookup = explicitIndexProvider;
         this.indexConfigStore = indexConfigStore;
         this.constraintSemantics = constraintSemantics;
         this.explicitIndexTransactionOrdering = explicitIndexTransactionOrdering;
 
         this.idController = idController;
-        StoreFactory factory = new StoreFactory( storeDir, config, idGeneratorFactory, pageCache, fs, logProvider,
+        StoreFactory factory = new StoreFactory( databaseLayout, config, idGeneratorFactory, pageCache, fs, logProvider,
                 versionContextSupplier );
         neoStores = factory.openAllNeoStores( true );
 
         try
         {
-            indexUpdatesConverter = new PropertyPhysicalToLogicalConverter( neoStores.getPropertyStore() );
             schemaCache = new SchemaCache( constraintSemantics, Collections.emptyList(), indexProviderMap );
             schemaStorage = new SchemaStorage( neoStores.getSchemaStore() );
 
             NeoStoreIndexStoreView neoStoreIndexStoreView = new NeoStoreIndexStoreView( lockService, neoStores );
-            Boolean readOnly = config.get( GraphDatabaseSettings.read_only ) && operationalMode == OperationalMode.single;
+            boolean readOnly = config.get( GraphDatabaseSettings.read_only ) && operationalMode == OperationalMode.single;
             monitors.addMonitorListener( new LoggingMonitor( logProvider.getLog( NativeLabelScanStore.class ) ) );
-            labelScanStore = new NativeLabelScanStore( pageCache, storeDir, fs, new FullLabelStream( neoStoreIndexStoreView ),
+            labelScanStore = new NativeLabelScanStore( pageCache, databaseLayout, fs, new FullLabelStream( neoStoreIndexStoreView ),
                     readOnly, monitors, recoveryCleanupWorkCollector );
 
             indexStoreView = new DynamicIndexStoreView( neoStoreIndexStoreView, labelScanStore, lockService, neoStores, logProvider );
             this.indexProviderMap = indexProviderMap;
-            indexingService = IndexingServiceFactory.createIndexingService( config, scheduler, this.indexProviderMap,
+            indexingService = IndexingServiceFactory.createIndexingService( config, scheduler, indexProviderMap,
                     indexStoreView, tokenNameLookup,
-                    Iterators.asList( new SchemaStorage( neoStores.getSchemaStore() ).indexesGetAll() ), logProvider,
+                    Iterators.asList( schemaStorage.loadAllSchemaRules() ), logProvider, userLogProvider,
                     indexingServiceMonitor, schemaState );
 
             integrityValidator = new IntegrityValidator( neoStores, indexingService );
-            cacheAccess = new BridgingCacheAccess( schemaCache, schemaState,
-                    propertyKeyTokenHolder, relationshipTypeTokens, labelTokens );
+            cacheAccess = new BridgingCacheAccess( schemaCache, schemaState, tokenHolders );
 
-            explicitIndexApplierLookup = new ExplicitIndexApplierLookup.Direct( explicitIndexProviderLookup );
+            explicitIndexApplierLookup = new ExplicitIndexApplierLookup.Direct( explicitIndexProvider );
 
             labelScanStoreSync = new WorkSync<>( labelScanStore::newWriter );
 
@@ -242,10 +228,8 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     public StorageReader newReader()
     {
         Supplier<IndexReaderFactory> indexReaderFactory = () -> new IndexReaderFactory.Caching( indexingService );
-        LockService lockService = takePropertyReadLocks ? this.lockService : NO_LOCK_SERVICE;
-
-        return new RecordStorageReader( propertyKeyTokenHolder, labelTokenHolder, relationshipTypeTokenHolder, schemaStorage, neoStores, indexingService,
-                schemaCache, indexReaderFactory, labelScanStore::newReader, lockService, allocateCommandCreationContext() );
+        return new RecordStorageReader( tokenHolders, schemaStorage, neoStores, indexingService,
+                schemaCache, indexReaderFactory, labelScanStore::newReader, allocateCommandCreationContext() );
     }
 
     @Override
@@ -262,12 +246,8 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
 
     @SuppressWarnings( "resource" )
     @Override
-    public void createCommands(
-            Collection<StorageCommand> commands,
-            ReadableTransactionState txState,
-            StorageReader storageReader,
-            ResourceLocker locks,
-            long lastTransactionIdWhenStarted )
+    public void createCommands( Collection<StorageCommand> commands, ReadableTransactionState txState, StorageReader storageReader, ResourceLocker locks,
+            long lastTransactionIdWhenStarted, TxStateVisitor.Decorator additionalTxStateVisitor )
             throws TransactionFailureException, CreateConstraintFailureException, ConstraintValidationException
     {
         if ( txState != null )
@@ -282,11 +262,9 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
 
             // Visit transaction state and populate these record state objects
             TxStateVisitor txStateVisitor = new TransactionToRecordStateVisitor( recordState, schemaState,
-                    schemaStorage, constraintSemantics, indexProviderMap );
+                    schemaStorage, constraintSemantics );
             CountsRecordState countsRecordState = new CountsRecordState();
-            txStateVisitor = constraintSemantics.decorateTxStateVisitor( storageReader,
-                    txState,
-                    txStateVisitor );
+            txStateVisitor = additionalTxStateVisitor.apply( txStateVisitor );
             txStateVisitor = new TransactionCountingStateVisitor(
                     txStateVisitor, storageReader, txState, countsRecordState );
             try ( TxStateVisitor visitor = txStateVisitor )
@@ -305,18 +283,17 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     {
         // Have these command appliers as separate try-with-resource to have better control over
         // point between closing this and the locks above
-        try ( BatchTransactionApplier batchApplier = applier( mode ) )
+        try ( IndexActivator indexActivator = new IndexActivator( indexingService );
+              LockGroup locks = new LockGroup();
+              BatchTransactionApplier batchApplier = applier( mode, indexActivator ) )
         {
             while ( batch != null )
             {
-                try ( LockGroup locks = new LockGroup() )
+                try ( TransactionApplier txApplier = batchApplier.startTx( batch, locks ) )
                 {
-                    try ( TransactionApplier txApplier = batchApplier.startTx( batch, locks ) )
-                    {
-                        batch.accept( txApplier );
-                    }
-                    batch = batch.next();
+                    batch.accept( txApplier );
                 }
+                batch = batch.next();
             }
         }
         catch ( Throwable cause )
@@ -335,7 +312,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
      *
      * After all transactions have been applied the appliers are closed.
      */
-    protected BatchTransactionApplierFacade applier( TransactionApplicationMode mode )
+    protected BatchTransactionApplierFacade applier( TransactionApplicationMode mode, IndexActivator indexActivator )
     {
         ArrayList<BatchTransactionApplier> appliers = new ArrayList<>();
         // Graph store application. The order of the decorated store appliers is irrelevant
@@ -355,8 +332,8 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
 
             // Schema index application
             appliers.add( new IndexBatchTransactionApplier( indexingService, labelScanStoreSync, indexUpdatesSync,
-                    neoStores.getNodeStore(),
-                    indexUpdatesConverter ) );
+                    neoStores.getNodeStore(), neoStores.getRelationshipStore(),
+                    neoStores.getPropertyStore(), indexActivator ) );
 
             // Explicit index application
             appliers.add(
@@ -383,7 +360,6 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
         satisfier.satisfyDependency( integrityValidator );
         satisfier.satisfyDependency( labelScanStore );
         satisfier.satisfyDependency( indexingService );
-        // providing TransactionIdStore, LogVersionRepository
         satisfier.satisfyDependency( neoStores.getMetaDataStore() );
         satisfier.satisfyDependency( indexStoreView );
     }
@@ -391,7 +367,6 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     @Override
     public void init() throws Throwable
     {
-        indexingService.init();
         labelScanStore.init();
     }
 
@@ -399,16 +374,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     public void start() throws Throwable
     {
         neoStores.makeStoreOk();
-
-        propertyKeyTokenHolder.setInitialTokens(
-                neoStores.getPropertyKeyTokenStore().getTokens( Integer.MAX_VALUE ) );
-        relationshipTypeTokenHolder.setInitialTokens(
-                neoStores.getRelationshipTypeTokenStore().getTokens( Integer.MAX_VALUE ) );
-        labelTokenHolder.setInitialTokens(
-                neoStores.getLabelTokenStore().getTokens( Integer.MAX_VALUE ) );
-
         neoStores.startCountStore(); // TODO: move this to counts store lifecycle
-        loadSchemaCache();
         indexingService.start();
         labelScanStore.start();
         idController.start();
@@ -448,7 +414,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     {
         indexingService.forceAll( limiter );
         labelScanStore.force( limiter );
-        for ( IndexImplementation index : explicitIndexProviderLookup.all() )
+        for ( IndexImplementation index : explicitIndexProviderLookup.allIndexProviders() )
         {
             index.force();
         }
@@ -494,7 +460,7 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
             {
                 final RecordStore<AbstractBaseRecord> recordStore = neoStores.getRecordStore( type );
                 StoreFileMetadata metadata =
-                        new StoreFileMetadata( recordStore.getStorageFileName(), recordStore.getRecordSize() );
+                        new StoreFileMetadata( recordStore.getStorageFile(), recordStore.getRecordSize() );
                 files.add( metadata );
             }
         }
@@ -522,5 +488,31 @@ public class RecordStorageEngine implements StorageEngine, Lifecycle
     public NeoStores testAccessNeoStores()
     {
         return neoStores;
+    }
+
+    @Override
+    public StoreId getStoreId()
+    {
+        return neoStores.getMetaDataStore().getStoreId();
+    }
+
+    @Override
+    public Lifecycle schemaAndTokensLifecycle()
+    {
+        return new LifecycleAdapter()
+        {
+            @Override
+            public void init()
+            {
+                tokenHolders.propertyKeyTokens().setInitialTokens(
+                        neoStores.getPropertyKeyTokenStore().getTokens() );
+                tokenHolders.relationshipTypeTokens().setInitialTokens(
+                        neoStores.getRelationshipTypeTokenStore().getTokens() );
+                tokenHolders.labelTokens().setInitialTokens(
+                        neoStores.getLabelTokenStore().getTokens() );
+                loadSchemaCache();
+                indexingService.init();
+            }
+        };
     }
 }

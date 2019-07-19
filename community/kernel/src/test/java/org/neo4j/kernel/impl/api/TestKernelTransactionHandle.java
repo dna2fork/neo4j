@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -134,6 +134,12 @@ public class TestKernelTransactionHandle implements KernelTransactionHandle
     public TransactionExecutionStatistic transactionStatistic()
     {
         return TransactionExecutionStatistic.NOT_AVAILABLE;
+    }
+
+    @Override
+    public boolean isSchemaTransaction()
+    {
+        return tx.isSchemaTransaction();
     }
 
     @Override

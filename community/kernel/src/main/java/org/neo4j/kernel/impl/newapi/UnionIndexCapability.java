@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -35,10 +35,10 @@ import org.neo4j.values.storable.ValueCategory;
  */
 public class UnionIndexCapability implements IndexCapability
 {
-    private final IndexCapability[] capabilities;
+    private final Iterable<IndexCapability> capabilities;
     private final IndexLimitation[] limitationsUnion;
 
-    public UnionIndexCapability( IndexCapability... capabilities )
+    protected UnionIndexCapability( Iterable<IndexCapability> capabilities )
     {
         this.capabilities = capabilities;
         this.limitationsUnion = limitationsUnion( capabilities );
@@ -71,12 +71,24 @@ public class UnionIndexCapability implements IndexCapability
     }
 
     @Override
+    public boolean isFulltextIndex()
+    {
+        return false;
+    }
+
+    @Override
+    public boolean isEventuallyConsistent()
+    {
+        return false;
+    }
+
+    @Override
     public IndexLimitation[] limitations()
     {
         return limitationsUnion;
     }
 
-    private IndexLimitation[] limitationsUnion( IndexCapability[] capabilities )
+    private IndexLimitation[] limitationsUnion( Iterable<IndexCapability> capabilities )
     {
         HashSet<IndexLimitation> union = new HashSet<>();
         for ( IndexCapability capability : capabilities )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -31,6 +31,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.PageCursor;
@@ -70,6 +72,7 @@ public class CrashGenerationCleanerTest
     private PagedFile pagedFile;
     private final Layout<MutableLong,MutableLong> layout = longLayout().build();
     private final CorruptibleTreeNode corruptibleTreeNode = new CorruptibleTreeNode( PAGE_SIZE, layout );
+    private final ExecutorService executor = Executors.newFixedThreadPool( Runtime.getRuntime().availableProcessors() );
     private final int oldStableGeneration = 9;
     private final int stableGeneration = 10;
     private final int unstableGeneration = 12;
@@ -112,10 +115,10 @@ public class CrashGenerationCleanerTest
 
         // WHEN
         SimpleCleanupMonitor monitor = new SimpleCleanupMonitor();
-        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean();
+        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean( executor );
 
         // THEN
-        assertPagesVisisted( monitor, pages.length );
+        assertPagesVisited( monitor, pages.length );
         assertCleanedCrashPointers( monitor, 0 );
     }
 
@@ -131,10 +134,10 @@ public class CrashGenerationCleanerTest
 
         // WHEN
         SimpleCleanupMonitor monitor = new SimpleCleanupMonitor();
-        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean();
+        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean( executor );
 
         // THEN
-        assertPagesVisisted( monitor, 2 );
+        assertPagesVisited( monitor, 2 );
         assertCleanedCrashPointers( monitor, 0 );
     }
 
@@ -164,10 +167,10 @@ public class CrashGenerationCleanerTest
 
         // WHEN
         SimpleCleanupMonitor monitor = new SimpleCleanupMonitor();
-        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean();
+        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean( executor );
 
         // THEN
-        assertPagesVisisted( monitor, pages.length );
+        assertPagesVisited( monitor, pages.length );
         assertCleanedCrashPointers( monitor, 9 );
     }
 
@@ -192,10 +195,10 @@ public class CrashGenerationCleanerTest
 
         // WHEN
         SimpleCleanupMonitor monitor = new SimpleCleanupMonitor();
-        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean();
+        crashGenerationCleaner( pagedFile, 0, pages.length, monitor ).clean( executor );
 
         // THEN
-        assertPagesVisisted( monitor, pages.length );
+        assertPagesVisited( monitor, pages.length );
         assertCleanedCrashPointers( monitor, 9 );
     }
 
@@ -217,10 +220,10 @@ public class CrashGenerationCleanerTest
 
         // WHEN
         SimpleCleanupMonitor monitor = new SimpleCleanupMonitor();
-        crashGenerationCleaner( pagedFile, 0, numberOfPages, monitor ).clean();
+        crashGenerationCleaner( pagedFile, 0, numberOfPages, monitor ).clean( executor );
 
         // THEN
-        assertPagesVisisted( monitor, numberOfPages );
+        assertPagesVisited( monitor, numberOfPages );
         assertCleanedCrashPointers( monitor, totalNumberOfCorruptions.getValue() );
     }
 
@@ -252,7 +255,7 @@ public class CrashGenerationCleanerTest
                 expectedNumberOfCleanedCrashPointers, monitor.numberOfCleanedCrashPointers );
     }
 
-    private void assertPagesVisisted( SimpleCleanupMonitor monitor, int expectedNumberOfPagesVisited )
+    private void assertPagesVisited( SimpleCleanupMonitor monitor, int expectedNumberOfPagesVisited )
     {
         assertEquals( "Expected number of visited pages to be " + expectedNumberOfPagesVisited +
                         " but was " + monitor.numberOfPagesVisited,

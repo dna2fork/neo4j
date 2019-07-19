@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,12 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.{LogicalPlanningContext, QueryGraphProducer}
-import org.neo4j.cypher.internal.ir.v3_5.QueryGraph
+import org.neo4j.cypher.internal.ir.v3_5.{QueryGraph, InterestingOrder}
 import org.neo4j.cypher.internal.planner.v3_5.spi.PlanContext
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions.SemanticDirection.{INCOMING, OUTGOING}
-import org.opencypher.v9_0.expressions._
 import org.neo4j.cypher.internal.v3_5.logical.plans._
+import org.neo4j.cypher.internal.v3_5.expressions.SemanticDirection.{INCOMING, OUTGOING}
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 class TriadicSelectionFinderTest extends CypherFunSuite with LogicalPlanningTestSupport with QueryGraphProducer {
 
@@ -271,5 +271,5 @@ class TriadicSelectionFinderTest extends CypherFunSuite with LogicalPlanningTest
   }
 
   private def testTriadic(in: LogicalPlan, qg: QueryGraph, context: LogicalPlanningContext): Seq[LogicalPlan] =
-    triadicSelectionFinder(in, qg, context, new StubSolveds, new StubCardinalities)
+    triadicSelectionFinder(in, qg, InterestingOrder.empty, context)
 }

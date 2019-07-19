@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -32,13 +32,14 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.is;
 
-class DefaultPageCacheTracerTest
+@SuppressWarnings( "WeakerAccess" ) // This test is accessed in neo4j-jfr.
+public class DefaultPageCacheTracerTest
 {
     private PageCacheTracer tracer;
     private PageSwapper swapper;
 
     @BeforeEach
-    void setUp()
+    public void setUp()
     {
         tracer = new DefaultPageCacheTracer();
         swapper = new DummyPageSwapper( "filename", (int) ByteUnit.kibiBytes( 8 ) );

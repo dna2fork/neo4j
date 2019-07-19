@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,17 +21,18 @@ package org.neo4j.kernel.impl.api.index;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.internal.kernel.api.InternalIndexState;
-import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
 import org.neo4j.io.pagecache.IOLimiter;
 import org.neo4j.kernel.api.exceptions.index.IndexEntryConflictException;
 import org.neo4j.kernel.api.index.IndexAccessor;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.index.PropertyAccessor;
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
 import org.neo4j.kernel.impl.api.index.updater.UpdateCountingIndexUpdater;
+import org.neo4j.storageengine.api.NodePropertyAccessor;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
 import org.neo4j.storageengine.api.schema.IndexReader;
 import org.neo4j.storageengine.api.schema.PopulationProgress;
 import org.neo4j.values.storable.Value;
@@ -119,14 +120,7 @@ public class OnlineIndexProxy implements IndexProxy
     public void drop()
     {
         indexCountsRemover.remove();
-        try
-        {
-            accessor.drop();
-        }
-        catch ( IOException e )
-        {
-            throw new RuntimeException( "Failed to drop index ", e );
-        }
+        accessor.drop();
     }
 
     @Override
@@ -142,13 +136,13 @@ public class OnlineIndexProxy implements IndexProxy
     }
 
     @Override
-    public void force( IOLimiter ioLimiter ) throws IOException
+    public void force( IOLimiter ioLimiter )
     {
         accessor.force( ioLimiter );
     }
 
     @Override
-    public void refresh() throws IOException
+    public void refresh()
     {
         accessor.refresh();
     }
@@ -166,7 +160,7 @@ public class OnlineIndexProxy implements IndexProxy
     }
 
     @Override
-    public boolean awaitStoreScanCompleted()
+    public boolean awaitStoreScanCompleted( long time, TimeUnit unit )
     {
         return false; // the store scan is already completed
     }
@@ -202,9 +196,15 @@ public class OnlineIndexProxy implements IndexProxy
     }
 
     @Override
-    public ResourceIterator<File> snapshotFiles() throws IOException
+    public ResourceIterator<File> snapshotFiles()
     {
         return accessor.snapshotFiles();
+    }
+
+    @Override
+    public Map<String,Value> indexConfig()
+    {
+        return accessor.indexConfig();
     }
 
     @Override
@@ -214,9 +214,8 @@ public class OnlineIndexProxy implements IndexProxy
     }
 
     @Override
-    public void verifyDeferredConstraints( PropertyAccessor propertyAccessor )
-            throws IndexEntryConflictException, IOException
+    public void verifyDeferredConstraints( NodePropertyAccessor nodePropertyAccessor ) throws IndexEntryConflictException
     {
-        accessor.verifyDeferredConstraints( propertyAccessor );
+        accessor.verifyDeferredConstraints( nodePropertyAccessor );
     }
 }

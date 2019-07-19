@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,28 +19,30 @@
  */
 package org.neo4j.kernel.impl.index.schema.fusion;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.neo4j.kernel.api.exceptions.index.IndexEntryConflictException;
+import org.neo4j.kernel.api.index.IndexConfigProvider;
 import org.neo4j.kernel.api.index.IndexEntryUpdate;
 import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.index.PropertyAccessor;
-import org.neo4j.kernel.impl.index.schema.fusion.FusionIndexProvider.DropAction;
+import org.neo4j.kernel.impl.index.schema.IndexDropAction;
+import org.neo4j.storageengine.api.NodePropertyAccessor;
 import org.neo4j.storageengine.api.schema.IndexSample;
+import org.neo4j.values.storable.Value;
 
 import static org.neo4j.kernel.impl.index.schema.fusion.FusionIndexSampler.combineSamples;
-import static org.neo4j.kernel.impl.index.schema.fusion.SlotSelector.INSTANCE_COUNT;
 
 class FusionIndexPopulator extends FusionIndexBase<IndexPopulator> implements IndexPopulator
 {
     private final long indexId;
-    private final DropAction dropAction;
+    private final IndexDropAction dropAction;
     private final boolean archiveFailedIndex;
 
-    FusionIndexPopulator( SlotSelector slotSelector, InstanceSelector<IndexPopulator> instanceSelector, long indexId, DropAction dropAction,
+    FusionIndexPopulator( SlotSelector slotSelector, InstanceSelector<IndexPopulator> instanceSelector, long indexId, IndexDropAction dropAction,
             boolean archiveFailedIndex )
     {
         super( slotSelector, instanceSelector );
@@ -50,7 +52,7 @@ class FusionIndexPopulator extends FusionIndexBase<IndexPopulator> implements In
     }
 
     @Override
-    public void create() throws IOException
+    public void create()
     {
         dropAction.drop( indexId, archiveFailedIndex );
         instanceSelector.forAll( IndexPopulator::create );
@@ -64,17 +66,16 @@ class FusionIndexPopulator extends FusionIndexBase<IndexPopulator> implements In
     }
 
     @Override
-    public void add( Collection<? extends IndexEntryUpdate<?>> updates ) throws IndexEntryConflictException, IOException
+    public void add( Collection<? extends IndexEntryUpdate<?>> updates ) throws IndexEntryConflictException
     {
-        LazyInstanceSelector<Collection<IndexEntryUpdate<?>>> batchSelector =
-                new LazyInstanceSelector<>( new Collection[INSTANCE_COUNT], slot -> new ArrayList<>() );
+        LazyInstanceSelector<Collection<IndexEntryUpdate<?>>> batchSelector = new LazyInstanceSelector<>( slot -> new ArrayList<>() );
         for ( IndexEntryUpdate<?> update : updates )
         {
             batchSelector.select( slotSelector.selectSlot( update.values(), GROUP_OF ) ).add( update );
         }
 
         // Manual loop due do multiple exception types
-        for ( int slot = 0; slot < INSTANCE_COUNT; slot++ )
+        for ( IndexSlot slot : IndexSlot.values() )
         {
             Collection<IndexEntryUpdate<?>> batch = batchSelector.getIfInstantiated( slot );
             if ( batch != null )
@@ -85,32 +86,31 @@ class FusionIndexPopulator extends FusionIndexBase<IndexPopulator> implements In
     }
 
     @Override
-    public void verifyDeferredConstraints( PropertyAccessor propertyAccessor )
-            throws IndexEntryConflictException, IOException
+    public void verifyDeferredConstraints( NodePropertyAccessor nodePropertyAccessor ) throws IndexEntryConflictException
     {
         // Manual loop due do multiple exception types
-        for ( int slot = 0; slot < INSTANCE_COUNT; slot++ )
+        for ( IndexSlot slot : IndexSlot.values() )
         {
-            instanceSelector.select( slot ).verifyDeferredConstraints( propertyAccessor );
+            instanceSelector.select( slot ).verifyDeferredConstraints( nodePropertyAccessor );
         }
     }
 
     @Override
-    public IndexUpdater newPopulatingUpdater( PropertyAccessor accessor )
+    public IndexUpdater newPopulatingUpdater( NodePropertyAccessor accessor )
     {
         LazyInstanceSelector<IndexUpdater> updaterSelector =
-                new LazyInstanceSelector<>( new IndexUpdater[INSTANCE_COUNT], slot -> instanceSelector.select( slot ).newPopulatingUpdater( accessor ) );
+                new LazyInstanceSelector<>( slot -> instanceSelector.select( slot ).newPopulatingUpdater( accessor ) );
         return new FusionIndexUpdater( slotSelector, updaterSelector );
     }
 
     @Override
-    public void close( boolean populationCompletedSuccessfully ) throws IOException
+    public void close( boolean populationCompletedSuccessfully )
     {
         instanceSelector.close( populator -> populator.close( populationCompletedSuccessfully ) );
     }
 
     @Override
-    public void markAsFailed( String failure ) throws IOException
+    public void markAsFailed( String failure )
     {
         instanceSelector.forAll( populator -> populator.markAsFailed( failure ) );
     }
@@ -124,6 +124,14 @@ class FusionIndexPopulator extends FusionIndexBase<IndexPopulator> implements In
     @Override
     public IndexSample sampleResult()
     {
-        return combineSamples( instanceSelector.instancesAs( new IndexSample[INSTANCE_COUNT], IndexPopulator::sampleResult ) );
+        return combineSamples( instanceSelector.transform( IndexPopulator::sampleResult ) );
+    }
+
+    @Override
+    public Map<String,Value> indexConfig()
+    {
+        Map<String,Value> indexConfig = new HashMap<>();
+        instanceSelector.transform( IndexPopulator::indexConfig ).forEach( source -> IndexConfigProvider.putAllNoOverwrite( indexConfig, source ) );
+        return indexConfig;
     }
 }

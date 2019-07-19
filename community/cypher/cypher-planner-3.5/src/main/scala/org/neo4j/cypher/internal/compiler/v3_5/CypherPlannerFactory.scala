@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,10 +23,9 @@ import java.time.Clock
 
 import org.neo4j.cypher.internal.compiler.v3_5.phases.{PlannerContext, LogicalPlanState}
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical._
-import org.neo4j.cypher.internal.planner.v3_5.spi.CostBasedPlannerName
-import org.opencypher.v9_0.frontend.phases.{ASTRewriter, Monitors, Transformer}
-import org.opencypher.v9_0.rewriting.RewriterStepSequencer
-import org.opencypher.v9_0.rewriting.rewriters.IfNoParameter
+import org.neo4j.cypher.internal.v3_5.frontend.phases.{ASTRewriter, Monitors, Transformer}
+import org.neo4j.cypher.internal.v3_5.rewriting.RewriterStepSequencer
+import org.neo4j.cypher.internal.v3_5.rewriting.rewriters.IfNoParameter
 
 class CypherPlannerFactory[C <: PlannerContext, T <: Transformer[C, LogicalPlanState, LogicalPlanState]] {
   val monitorTag = "cypher3.5"
@@ -34,14 +33,12 @@ class CypherPlannerFactory[C <: PlannerContext, T <: Transformer[C, LogicalPlanS
   def costBasedCompiler(config: CypherPlannerConfiguration,
                         clock: Clock,
                         monitors: Monitors,
-                        rewriterSequencer: (String) => RewriterStepSequencer,
-                        plannerName: Option[CostBasedPlannerName],
+                        rewriterSequencer: String => RewriterStepSequencer,
                         updateStrategy: Option[UpdateStrategy],
                         contextCreator: ContextCreator[C]): CypherPlanner[C] = {
-    val rewriter = new ASTRewriter(rewriterSequencer, IfNoParameter, getDegreeRewriting = true)
     val metricsFactory = CachedMetricsFactory(SimpleMetricsFactory)
     val actualUpdateStrategy: UpdateStrategy = updateStrategy.getOrElse(defaultUpdateStrategy)
-    CypherPlanner( rewriter, monitors, rewriterSequencer,
+    CypherPlanner(monitors, rewriterSequencer,
       metricsFactory, config, actualUpdateStrategy, clock, contextCreator)
   }
 }

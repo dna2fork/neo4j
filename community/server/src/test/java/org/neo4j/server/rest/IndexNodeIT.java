@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -283,8 +283,7 @@ public class IndexNodeIT extends AbstractRestFunctionalTestBase
                     unorderedEntry.getValue(),
                     nodeMapOrdered.get( unorderedEntry.getKey() ) );
         }
-        assertTrue( "There should be only one extra value for the ordered map",
-                nodeMapOrdered.size() == nodeMapUnordered.size() + 1 );
+        assertEquals( "There should be only one extra value for the ordered map", nodeMapOrdered.size(), nodeMapUnordered.size() + 1 );
     }
 
     //TODO:add compatibility tests for old syntax
@@ -433,7 +432,7 @@ public class IndexNodeIT extends AbstractRestFunctionalTestBase
     }
 
     @Test
-    public void shouldGet404WhenDeletingNonExtistentIndex()
+    public void shouldGet404WhenDeletingNonExistentIndex()
     {
         final String indexName = indexes.newInstance();
         String indexUri = functionalTestHelper.nodeIndexUri() + indexName;

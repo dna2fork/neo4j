@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -89,16 +89,9 @@ class SpatialIndexCache<T> extends IndexPartsCache<CoordinateReferenceSystem,T>
      * @param crs target coordinate reference system
      * @return selected part
      */
-    T select( CoordinateReferenceSystem crs ) throws IOException
+    T select( CoordinateReferenceSystem crs )
     {
-        try
-        {
-            return uncheckedSelect( crs );
-        }
-        catch ( UncheckedIOException e )
-        {
-            throw e.getCause();
-        }
+        return uncheckedSelect( crs );
     }
 
     /**

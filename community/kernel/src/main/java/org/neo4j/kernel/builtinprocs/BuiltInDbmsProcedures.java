@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -56,10 +56,11 @@ public class BuiltInDbmsProcedures
     public Stream<ConfigResult> listConfig( @Name( value = "searchString", defaultValue = "" ) String searchString )
     {
         Config config = graph.getDependencyResolver().resolveDependency( Config.class );
+        String lowerCasedSearchString = searchString.toLowerCase();
         return config.getConfigValues().values().stream()
                 .filter( c -> !c.internal() )
+                .filter( c -> c.name().toLowerCase().contains( lowerCasedSearchString ) )
                 .map( ConfigResult::new )
-                .filter( c -> c.name.toLowerCase().contains( searchString.toLowerCase() ) )
                 .sorted( Comparator.comparing( c -> c.name ) );
     }
 

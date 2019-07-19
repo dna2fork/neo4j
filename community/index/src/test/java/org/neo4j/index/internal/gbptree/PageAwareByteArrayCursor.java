@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -128,7 +128,7 @@ class PageAwareByteArrayCursor extends PageCursor
     {
         if ( sourceOffset < 0 || targetOffset < 0 || lengthInBytes < 0 )
         {
-            throw new IllegalArgumentException( format( "sourceOffset=%d, targetOffset=%d, lengthInBytes=%d, currenPageId=%d",
+            throw new IllegalArgumentException( format( "sourceOffset=%d, targetOffset=%d, lengthInBytes=%d, currentPageId=%d",
                     sourceOffset, targetOffset, lengthInBytes, currentPageId ) );
         }
         int bytesToCopy = Math.min( lengthInBytes,

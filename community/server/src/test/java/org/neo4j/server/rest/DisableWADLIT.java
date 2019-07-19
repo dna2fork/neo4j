@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -32,7 +32,7 @@ import static org.junit.Assert.assertEquals;
 public class DisableWADLIT extends AbstractRestFunctionalTestBase
 {
     @Test
-    public void should404OnAnyUriEndinginWADL() throws Exception
+    public void should404OnAnyUriEndingInWADL() throws Exception
     {
         URI nodeUri = new URI( server().baseUri() + "db/data/application.wadl" );
 

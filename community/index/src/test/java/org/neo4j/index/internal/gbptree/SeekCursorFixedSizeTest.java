@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.apache.commons.lang3.mutable.MutableLong;
 
 import static org.neo4j.index.internal.gbptree.SimpleLongLayout.longLayout;
 
-public class SeekCursorFixedSizeTest extends SeekCursorTestBase<MutableLong,MutableLong>
+class SeekCursorFixedSizeTest extends SeekCursorTestBase<MutableLong,MutableLong>
 {
     @Override
     TestLayout<MutableLong,MutableLong> getLayout()

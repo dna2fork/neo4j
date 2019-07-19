@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,11 @@
  */
 package org.neo4j.cypher.internal
 
-import org.neo4j.cypher.CypherException
+import org.neo4j.cypher.{CypherException, CypherExpressionEngineOption}
+import org.neo4j.graphdb.Notification
 import org.neo4j.kernel.impl.query.TransactionalContext
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
+import org.neo4j.values.virtual.MapValue
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer
 
 /**
   * Cypher compiler, which compiles pre-parsed queries into executable queries.
@@ -29,19 +31,20 @@ import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
 trait Compiler {
 
   /**
-    * Compile pre-parsed query into executable query.
+    * Compile [[PreParsedQuery]] into [[ExecutableQuery]].
     *
-    * @param preParsedQuery pre-parsed query to convert
-    * @param tracer compilation tracer to which events of the compilation process are reported
+    * @param preParsedQuery          pre-parsed query to convert
+    * @param tracer                  compilation tracer to which events of the compilation process are reported
     * @param preParsingNotifications notifications from pre-parsing
-    * @param transactionalContext transactional context to use during compilation (in logical and physical planning)
+    * @param transactionalContext    transactional context to use during compilation (in logical and physical planning)
     * @throws CypherException public cypher exceptions on compilation problems
     * @return a compiled and executable query
     */
   @throws[org.neo4j.cypher.CypherException]
   def compile(preParsedQuery: PreParsedQuery,
               tracer: CompilationPhaseTracer,
-              preParsingNotifications: Set[org.neo4j.graphdb.Notification],
-              transactionalContext: TransactionalContext
-             ): CacheableExecutableQuery
+              preParsingNotifications: Set[Notification],
+              transactionalContext: TransactionalContext,
+              params: MapValue
+             ): ExecutableQuery
 }

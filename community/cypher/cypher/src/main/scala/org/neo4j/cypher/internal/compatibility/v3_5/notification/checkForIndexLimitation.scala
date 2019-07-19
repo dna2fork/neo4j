@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,27 +19,27 @@
  */
 package org.neo4j.cypher.internal.compatibility.v3_5.notification
 
-import org.neo4j.cypher.internal.compiler.v3_5.{ExperimentalFeatureNotification, SuboptimalIndexForWildcardQueryNotification}
+import org.neo4j.cypher.internal.compiler.v3_5.{SuboptimalIndexForConstainsQueryNotification, SuboptimalIndexForEndsWithQueryNotification}
 import org.neo4j.cypher.internal.planner.v3_5.spi.{IndexLimitation, PlanContext, SlowContains}
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.expressions.{LabelToken, PropertyKeyToken}
-import org.opencypher.v9_0.util.InternalNotification
+import org.neo4j.cypher.internal.v3_5.expressions.{LabelToken, PropertyKeyToken}
+import org.neo4j.cypher.internal.v3_5.util.InternalNotification
 
 case class checkForIndexLimitation(planContext: PlanContext) extends NotificationChecker {
 
   def apply(plan: LogicalPlan): Set[InternalNotification] = {
 
     plan.treeFold[Set[InternalNotification]](Set.empty) {
-      case NodeIndexContainsScan(_, label, property, _, _) =>
+      case NodeIndexContainsScan(_, label, property, _, _, _) =>
         acc =>
-          val notifications = getLimitations(label, property).collect {
-            case SlowContains => SuboptimalIndexForWildcardQueryNotification(label.name, Seq(property.name))
+          val notifications = getLimitations(label, property.propertyKeyToken).collect {
+            case SlowContains => SuboptimalIndexForConstainsQueryNotification(label.name, Seq(property.propertyKeyToken.name))
           }
           (acc ++ notifications, None)
-      case NodeIndexEndsWithScan(_, label, property, _, _) =>
+      case NodeIndexEndsWithScan(_, label, property, _, _, _) =>
         acc =>
-          val notifications = getLimitations(label, property).collect {
-            case SlowContains => SuboptimalIndexForWildcardQueryNotification(label.name, Seq(property.name))
+          val notifications = getLimitations(label, property.propertyKeyToken).collect {
+            case SlowContains => SuboptimalIndexForEndsWithQueryNotification(label.name, Seq(property.propertyKeyToken.name))
           }
           (acc ++ notifications, None)
     }

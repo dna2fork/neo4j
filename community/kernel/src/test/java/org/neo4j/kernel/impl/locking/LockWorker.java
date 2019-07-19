@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,6 +23,7 @@ import java.util.concurrent.Future;
 
 import org.neo4j.kernel.DeadlockDetectedException;
 import org.neo4j.storageengine.api.lock.AcquireLockTimeoutException;
+import org.neo4j.storageengine.api.lock.LockTracer;
 import org.neo4j.test.OtherThreadExecutor;
 
 import static org.neo4j.kernel.impl.locking.ResourceTypes.NODE;

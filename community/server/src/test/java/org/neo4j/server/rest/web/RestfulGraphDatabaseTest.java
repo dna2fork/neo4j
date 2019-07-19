@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -601,8 +601,7 @@ public class RestfulGraphDatabaseTest
         properties.put( "number", 15 );
         helper.setNodeProperties( nodeId, properties );
         service.deleteAllNodeProperties( nodeId );
-        assertEquals( true, helper.getNodeProperties( nodeId )
-                .isEmpty() );
+        assertTrue( helper.getNodeProperties( nodeId ).isEmpty() );
     }
 
     @Test
@@ -953,9 +952,7 @@ public class RestfulGraphDatabaseTest
             Set<String> indexes = output.getResultAsMap()
                     .keySet();
             assertEquals( 1, indexes.size() );
-            assertTrue( indexes.iterator()
-                    .next()
-                    .equals( NODE_AUTO_INDEX ) );
+            assertEquals( indexes.iterator().next(), NODE_AUTO_INDEX );
         }
         else
         {

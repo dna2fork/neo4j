@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,16 +22,16 @@ package org.neo4j.kernel.impl.store.record;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 
-import org.neo4j.kernel.api.exceptions.schema.MalformedSchemaRuleException;
-import org.neo4j.kernel.api.index.IndexProvider;
+import org.neo4j.internal.kernel.api.exceptions.schema.MalformedSchemaRuleException;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.kernel.api.schema.LabelSchemaDescriptor;
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
 import org.neo4j.storageengine.api.schema.SchemaRule;
 import org.neo4j.storageengine.api.schema.SchemaRule.Kind;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 import static org.neo4j.helpers.Numbers.safeCastLongToInt;
 import static org.neo4j.string.UTF8.getDecodedStringFrom;
@@ -96,7 +96,7 @@ public class SchemaRuleDeserializer2_0to3_1
 
     private static StoreIndexDescriptor readIndexRule( long id, boolean constraintIndex, int label, ByteBuffer serialized )
     {
-        IndexProvider.Descriptor providerDescriptor = readIndexProviderDescriptor( serialized );
+        IndexProviderDescriptor providerDescriptor = readIndexProviderDescriptor( serialized );
         int[] propertyKeyIds = readIndexPropertyKeys( serialized );
         LabelSchemaDescriptor schema = SchemaDescriptorFactory.forLabel( label, propertyKeyIds );
         Optional<String> name = Optional.empty();
@@ -109,11 +109,11 @@ public class SchemaRuleDeserializer2_0to3_1
         return storeIndexDescriptor;
     }
 
-    private static IndexProvider.Descriptor readIndexProviderDescriptor( ByteBuffer serialized )
+    private static IndexProviderDescriptor readIndexProviderDescriptor( ByteBuffer serialized )
     {
         String providerKey = getDecodedStringFrom( serialized );
         String providerVersion = getDecodedStringFrom( serialized );
-        return new IndexProvider.Descriptor( providerKey, providerVersion );
+        return new IndexProviderDescriptor( providerKey, providerVersion );
     }
 
     private static int[] readIndexPropertyKeys( ByteBuffer serialized )

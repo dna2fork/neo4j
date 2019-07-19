@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -31,13 +31,13 @@ public class StoreLockerLifecycleAdapter extends LifecycleAdapter
     }
 
     @Override
-    public void start()
+    public synchronized void start()
     {
         storeLocker.checkLock();
     }
 
     @Override
-    public void stop() throws Throwable
+    public synchronized void stop() throws Throwable
     {
         storeLocker.close();
     }

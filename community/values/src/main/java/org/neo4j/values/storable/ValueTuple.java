@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -47,7 +47,7 @@ public class ValueTuple
 
     private final Value[] values;
 
-    private ValueTuple( Value[] values )
+    protected ValueTuple( Value[] values )
     {
         this.values = values;
     }
@@ -60,6 +60,14 @@ public class ValueTuple
     public Value valueAt( int offset )
     {
         return values[offset];
+    }
+
+    /**
+     * WARNING: this method does not create a defensive copy. Do not modify the returned array.
+     */
+    public Value[] getValues()
+    {
+        return values;
     }
 
     @Override

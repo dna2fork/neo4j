@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.cypher.internal.ir.v3_5
 
-import org.opencypher.v9_0.expressions.{RelTypeName, SemanticDirection}
+import org.neo4j.cypher.internal.v3_5.expressions.{RelTypeName, SemanticDirection}
 
 final case class PatternRelationship(name: String, nodes: (String, String), dir: SemanticDirection,
                                      types: Seq[RelTypeName], length: PatternLength) {

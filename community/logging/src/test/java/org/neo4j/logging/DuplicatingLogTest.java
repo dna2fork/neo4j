@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,12 +19,12 @@
  */
 package org.neo4j.logging;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class DuplicatingLogTest
+class DuplicatingLogTest
 {
     @Test
-    public void shouldOutputToMultipleLogs()
+    void shouldOutputToMultipleLogs()
     {
         // Given
         AssertableLogProvider logProvider = new AssertableLogProvider();
@@ -44,7 +44,7 @@ public class DuplicatingLogTest
     }
 
     @Test
-    public void shouldBulkOutputToMultipleLogs()
+    void shouldBulkOutputToMultipleLogs()
     {
         // Given
         AssertableLogProvider logProvider = new AssertableLogProvider();
@@ -64,7 +64,7 @@ public class DuplicatingLogTest
     }
 
     @Test
-    public void shouldRemoveLogFromDuplication()
+    void shouldRemoveLogFromDuplication()
     {
         // Given
         AssertableLogProvider logProvider = new AssertableLogProvider();
@@ -87,7 +87,7 @@ public class DuplicatingLogTest
     }
 
     @Test
-    public void shouldRemoveLoggersFromDuplication()
+    void shouldRemoveLoggersFromDuplication()
     {
         // Given
         AssertableLogProvider logProvider = new AssertableLogProvider();

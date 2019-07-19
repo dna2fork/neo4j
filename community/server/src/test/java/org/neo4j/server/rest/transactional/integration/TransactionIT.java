@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -44,8 +44,8 @@ import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.kernel.api.KernelTransactionHandle;
 import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.kernel.impl.api.KernelTransactions;
-import org.neo4j.kernel.impl.transaction.TransactionStats;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
+import org.neo4j.kernel.impl.transaction.stats.DatabaseTransactionStats;
 import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.server.ServerTestUtils;
 import org.neo4j.server.rest.AbstractRestFunctionalTestBase;
@@ -315,7 +315,7 @@ public class TransactionIT extends AbstractRestFunctionalTestBase
     public void begin_and_execute_periodic_commit_that_returns_data_and_commit() throws Exception
     {
         int nodes = 11;
-        int batch = 2;
+        int batchSize = 2;
         ServerTestUtils.withCSVFile( nodes, url ->
         {
             long nodesInDatabaseBeforeTransaction = countNodes();
@@ -324,8 +324,8 @@ public class TransactionIT extends AbstractRestFunctionalTestBase
             // begin and execute and commit
             Response response = http.POST(
                     "db/data/transaction/commit",
-                    quotedJson( "{ 'statements': [ { 'statement': 'USING PERIODIC COMMIT " + batch + " LOAD CSV FROM " +
-                            "\\\"" + url + "\\\" AS line CREATE (n {id: 23}) RETURN n' } ] }" )
+                    quotedJson( "{ 'statements': [ { 'statement': 'USING PERIODIC COMMIT " + batchSize + " LOAD CSV FROM " +
+                            "\\\"" + url + "\\\" AS line CREATE (n {id1: 23}) RETURN n' } ] }" )
             );
             long txIdAfter = resolveDependency( TransactionIdStore.class ).getLastClosedTransactionId();
 
@@ -336,7 +336,9 @@ public class TransactionIT extends AbstractRestFunctionalTestBase
             JsonNode columns = response.get( "results" ).get( 0 ).get( "columns" );
             assertThat( columns.toString(), equalTo( "[\"n\"]" ) );
             assertThat( countNodes(), equalTo( nodesInDatabaseBeforeTransaction + nodes ) );
-            assertThat( txIdAfter, equalTo( txIdBefore + ((nodes / batch) + 1) ) );
+            long nBatches = (nodes / batchSize) + 1;
+            long expectedTxCount = nBatches + 1; // tx which create the property key token `id`
+            assertThat( txIdAfter - txIdBefore, equalTo( expectedTxCount ) );
         } );
     }
 
@@ -648,8 +650,8 @@ public class TransactionIT extends AbstractRestFunctionalTestBase
     {
         // given
         long initialNodes = countNodes();
-        TransactionStats txMonitor = ((GraphDatabaseAPI) graphdb()).getDependencyResolver().resolveDependency(
-                TransactionStats.class );
+        DatabaseTransactionStats txMonitor = ((GraphDatabaseAPI) graphdb()).getDependencyResolver().resolveDependency(
+                DatabaseTransactionStats.class );
         long initialTerminations = txMonitor.getNumberOfTerminatedTransactions();
 
         // when sending a request and aborting in the middle of receiving the result

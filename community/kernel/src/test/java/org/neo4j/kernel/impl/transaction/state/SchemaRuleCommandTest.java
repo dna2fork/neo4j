@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,13 +26,12 @@ import java.util.function.Supplier;
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.internal.kernel.api.schema.SchemaDescriptorPredicates;
 import org.neo4j.kernel.api.labelscan.LabelScanWriter;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
 import org.neo4j.kernel.impl.api.BatchTransactionApplier;
 import org.neo4j.kernel.impl.api.TransactionToApply;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.api.index.IndexingUpdateService;
-import org.neo4j.kernel.impl.api.index.PropertyPhysicalToLogicalConverter;
 import org.neo4j.kernel.impl.core.CacheAccessBackDoor;
 import org.neo4j.kernel.impl.locking.LockService;
 import org.neo4j.kernel.impl.store.MetaDataStore;
@@ -42,13 +41,13 @@ import org.neo4j.kernel.impl.store.PropertyStore;
 import org.neo4j.kernel.impl.store.SchemaStore;
 import org.neo4j.kernel.impl.store.record.ConstraintRule;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.store.record.SchemaRecord;
 import org.neo4j.kernel.impl.store.record.SchemaRuleSerialization;
 import org.neo4j.kernel.impl.transaction.command.BaseCommandReader;
 import org.neo4j.kernel.impl.transaction.command.Command;
 import org.neo4j.kernel.impl.transaction.command.Command.SchemaRuleCommand;
 import org.neo4j.kernel.impl.transaction.command.CommandHandlerContract;
+import org.neo4j.kernel.impl.transaction.command.IndexActivator;
 import org.neo4j.kernel.impl.transaction.command.IndexBatchTransactionApplier;
 import org.neo4j.kernel.impl.transaction.command.IndexUpdatesWork;
 import org.neo4j.kernel.impl.transaction.command.LabelUpdateWork;
@@ -57,6 +56,7 @@ import org.neo4j.kernel.impl.transaction.command.PhysicalLogCommandReaderV3_0_2;
 import org.neo4j.kernel.impl.transaction.log.InMemoryClosableChannel;
 import org.neo4j.kernel.impl.transaction.log.PhysicalTransactionRepresentation;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 import org.neo4j.util.concurrent.WorkSync;
 
 import static java.util.Collections.singletonList;
@@ -67,7 +67,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.neo4j.kernel.impl.api.index.TestIndexProviderDescriptor.PROVIDER_DESCRIPTOR;
 
 public class SchemaRuleCommandTest
 {
@@ -88,9 +87,9 @@ public class SchemaRuleCommandTest
             new WorkSync<>( labelScanStore );
     private final WorkSync<IndexingUpdateService,IndexUpdatesWork> indexUpdatesSync = new WorkSync<>( indexes );
     private final PropertyStore propertyStore = mock( PropertyStore.class );
-    private final IndexBatchTransactionApplier indexApplier = new IndexBatchTransactionApplier( indexes,
-            labelScanStoreSynchronizer, indexUpdatesSync, mock( NodeStore.class ),
-            new PropertyPhysicalToLogicalConverter( propertyStore ) );
+    private final IndexBatchTransactionApplier indexApplier =
+            new IndexBatchTransactionApplier( indexes, labelScanStoreSynchronizer, indexUpdatesSync, mock( NodeStore.class ), neoStores.getRelationshipStore(),
+                    propertyStore, new IndexActivator( indexes ) );
     private final BaseCommandReader reader = new PhysicalLogCommandReaderV3_0_2();
     private final StoreIndexDescriptor rule = TestIndexDescriptorFactory.forLabel( labelId, propertyKey ).withId( id );
 

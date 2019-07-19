@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package org.neo4j.server.rest.transactional;
 
 import java.util.concurrent.TimeUnit;
 
+import org.neo4j.graphdb.NotInTransactionException;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.internal.kernel.api.exceptions.TransactionFailureException;
 import org.neo4j.internal.kernel.api.security.LoginContext;
@@ -34,7 +35,7 @@ class TransitionalTxManagementKernelTransaction
     private final GraphDatabaseFacade db;
     private final KernelTransaction.Type type;
     private final LoginContext loginContext;
-    private long customTransactionTimeout;
+    private final long customTransactionTimeout;
     private final ThreadToStatementContextBridge bridge;
 
     private InternalTransaction tx;
@@ -95,6 +96,10 @@ class TransitionalTxManagementKernelTransaction
             KernelTransaction kernelTransactionBoundToThisThread = bridge.getKernelTransactionBoundToThisThread( true );
             kernelTransactionBoundToThisThread.success();
             kernelTransactionBoundToThisThread.close();
+        }
+        catch ( NotInTransactionException e )
+        {
+            // if the transaction was already terminated there is nothing more to do
         }
         catch ( TransactionFailureException e )
         {

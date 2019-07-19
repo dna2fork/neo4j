@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -39,7 +39,19 @@ import static java.util.Collections.singletonList;
 
 public class PointValue extends ScalarValue implements Point, Comparable<PointValue>
 {
-    public static String[] ALLOWED_KEYS = new String[]{"crs", "x", "y", "z", "longitude", "latitude", "height", "srid"};
+    // WGS84 is the CRS w/ lowest table/code at the time of writing this. Update as more CRSs gets added.
+    public static final PointValue MIN_VALUE = new PointValue( CoordinateReferenceSystem.WGS84, -180D, -90 );
+    // Cartesian_3D is the CRS w/ highest table/code at the time of writing this. Update as more CRSs gets added.
+    public static final PointValue MAX_VALUE = new PointValue( CoordinateReferenceSystem.Cartesian_3D, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE );
+
+    static final PointValue MIN_VALUE_WGS84 = new PointValue( CoordinateReferenceSystem.WGS84, -180D, -90 );
+    static final PointValue MAX_VALUE_WGS84 = new PointValue( CoordinateReferenceSystem.WGS84, 180D, 90 );
+    static final PointValue MIN_VALUE_WGS84_3D = new PointValue( CoordinateReferenceSystem.WGS84_3D, -180D, -90, Long.MIN_VALUE );
+    static final PointValue MAX_VALUE_WGS84_3D = new PointValue( CoordinateReferenceSystem.WGS84_3D, 180D, 90, Long.MAX_VALUE );
+    static final PointValue MIN_VALUE_CARTESIAN = new PointValue( CoordinateReferenceSystem.Cartesian, Long.MIN_VALUE, Long.MIN_VALUE );
+    static final PointValue MAX_VALUE_CARTESIAN = new PointValue( CoordinateReferenceSystem.Cartesian, Long.MAX_VALUE, Long.MAX_VALUE );
+    static final PointValue MIN_VALUE_CARTESIAN_3D = new PointValue( CoordinateReferenceSystem.Cartesian_3D, Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE );
+    static final PointValue MAX_VALUE_CARTESIAN_3D = new PointValue( CoordinateReferenceSystem.Cartesian_3D, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE );
 
     private CoordinateReferenceSystem crs;
     private double[] coordinate;
@@ -125,7 +137,7 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
     @Override
     public int compareTo( PointValue other )
     {
-        int cmpCRS = this.crs.getCode() - other.crs.getCode();
+        int cmpCRS = Integer.compare( this.crs.getCode(), other.crs.getCode() );
         if ( cmpCRS != 0 )
         {
             return cmpCRS;
@@ -159,7 +171,7 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
     }
 
     @Override
-    Comparison unsafeTernaryCompareTo( Value otherValue )
+    public Comparison unsafeTernaryCompareTo( Value otherValue )
     {
         PointValue other = (PointValue) otherValue;
 
@@ -168,21 +180,49 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
             return Comparison.UNDEFINED;
         }
 
-        int result = 0;
+        int eq = 0;
+        int gt = 0;
+        int lt = 0;
         for ( int i = 0; i < coordinate.length; i++ )
         {
             int cmpVal = Double.compare( this.coordinate[i], other.coordinate[i] );
-            if ( cmpVal != 0 && cmpVal != result )
+            if ( cmpVal > 0 )
             {
-                if ( (cmpVal < 0 && result > 0) || (cmpVal > 0 && result < 0) )
-                {
-                    return Comparison.UNDEFINED;
-                }
-                result = cmpVal;
+                gt++;
+            }
+            else if ( cmpVal < 0 )
+            {
+                lt++;
+            }
+            else
+            {
+                eq++;
             }
         }
-
-        return Comparison.from( result );
+        if ( eq == coordinate.length )
+        {
+            return Comparison.EQUAL;
+        }
+        else if ( gt == coordinate.length )
+        {
+            return Comparison.GREATER_THAN;
+        }
+        else if ( lt == coordinate.length )
+        {
+            return Comparison.SMALLER_THAN;
+        }
+        else if ( lt == 0 )
+        {
+            return Comparison.GREATER_THAN_AND_EQUAL;
+        }
+        else if ( gt == 0 )
+        {
+            return Comparison.SMALLER_THAN_AND_EQUAL;
+        }
+        else
+        {
+            return Comparison.UNDEFINED;
+        }
     }
 
     @Override
@@ -233,9 +273,15 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
     @Override
     public String toString()
     {
-        String coordString = coordinate.length == 2 ? format( "x: %s, y: %s", coordinate[0], coordinate[1] ) :
-                             format( "x: %s, y: %s, z: %s", coordinate[0], coordinate[1], coordinate[2] );
-        return format( "point({%s, crs: '%s'})", coordString, getCoordinateReferenceSystem().getName() );
+        String coordString = coordinate.length == 2 ? format( "x: %s, y: %s", coordinate[0], coordinate[1] )
+                                                    : format( "x: %s, y: %s, z: %s", coordinate[0], coordinate[1], coordinate[2] );
+        return format( "point({%s, crs: '%s'})", coordString, getCoordinateReferenceSystem().getName() ); //TODO: Use getTypeName -> Breaking change
+    }
+
+    @Override
+    public String getTypeName()
+    {
+        return "Point";
     }
 
     /**
@@ -269,22 +315,61 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
      * @param includeUpper governs if the upper comparison should be inclusive
      * @return true if this value is within the described range
      */
-    public boolean withinRange( PointValue lower, boolean includeLower, PointValue upper, boolean includeUpper )
+    public Boolean withinRange( PointValue lower, boolean includeLower, PointValue upper, boolean includeUpper )
     {
+        // Unbounded
+        if ( lower == null && upper == null )
+        {
+            return true;
+        }
+
+        // Invalid bounds (lower greater than upper)
+        if ( lower != null && upper != null )
+        {
+            Comparison comparison = lower.unsafeTernaryCompareTo( upper );
+            if ( comparison == Comparison.UNDEFINED || comparison == Comparison.GREATER_THAN || comparison == Comparison.GREATER_THAN_AND_EQUAL )
+            {
+                return null;
+            }
+        }
+
+        // Lower bound defined
         if ( lower != null )
         {
-            Comparison compareLower = this.unsafeTernaryCompareTo( lower );
-            if ( compareLower == Comparison.UNDEFINED || compareLower == Comparison.SMALLER_THAN || compareLower == Comparison.EQUAL && !includeLower )
+            Comparison comparison = this.unsafeTernaryCompareTo( lower );
+            if ( comparison == Comparison.UNDEFINED )
+            {
+                return null;
+            }
+            else if ( comparison == Comparison.SMALLER_THAN || comparison == Comparison.SMALLER_THAN_AND_EQUAL ||
+                    (comparison == Comparison.EQUAL || comparison == Comparison.GREATER_THAN_AND_EQUAL) && !includeLower )
+            {
+                if ( upper != null && this.unsafeTernaryCompareTo( upper ) == Comparison.UNDEFINED )
+                {
+                    return null;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Upper bound defined
+        if ( upper != null )
+        {
+            Comparison comparison = this.unsafeTernaryCompareTo( upper );
+            if ( comparison == Comparison.UNDEFINED )
+            {
+                return null;
+            }
+            else if ( comparison == Comparison.GREATER_THAN || comparison == Comparison.GREATER_THAN_AND_EQUAL ||
+                    (comparison == Comparison.EQUAL || comparison == Comparison.SMALLER_THAN_AND_EQUAL) && !includeUpper )
             {
                 return false;
             }
         }
-        if ( upper != null )
-        {
-            Comparison compareUpper = this.unsafeTernaryCompareTo( upper );
-            return compareUpper != Comparison.UNDEFINED && compareUpper != Comparison.GREATER_THAN &&
-                   (compareUpper != Comparison.EQUAL || includeUpper);
-        }
+
         return true;
     }
 
@@ -427,30 +512,10 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
      */
     public Value get( String fieldName )
     {
-        switch ( fieldName.toLowerCase() )
-        {
-        case "x":
-            return getNthCoordinate( 0, fieldName, false );
-        case "y":
-            return getNthCoordinate( 1, fieldName, false );
-        case "z":
-            return getNthCoordinate( 2, fieldName, false );
-        case "longitude":
-            return getNthCoordinate( 0, fieldName, true );
-        case "latitude":
-            return getNthCoordinate( 1, fieldName, true );
-        case "height":
-            return getNthCoordinate( 2, fieldName, true );
-        case "crs":
-            return Values.stringValue( crs.toString() );
-        case "srid":
-            return Values.intValue( crs.getCode() );
-        default:
-            throw new InvalidValuesArgumentException( "No such field: " + fieldName );
-        }
+       return PointFields.fromName( fieldName ).get( this );
     }
 
-    private DoubleValue getNthCoordinate( int n, String fieldName, boolean onlyGeographic )
+    DoubleValue getNthCoordinate( int n, String fieldName, boolean onlyGeographic )
     {
         if ( onlyGeographic && !this.getCoordinateReferenceSystem().isGeographic() )
         {
@@ -476,7 +541,6 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
         private Double latitude;
         private Double height;
         private int srid = -1;
-        private boolean allowOpenMaps = true;
 
         @Override
         public void assign( String key, Object value )
@@ -519,10 +583,6 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
                 assignIntegral( key, value, i -> srid = i );
                 break;
             default:
-                if ( !allowOpenMaps )
-                {
-                    throwOnUnrecognizedKey( key );
-                }
             }
         }
 
@@ -588,11 +648,6 @@ public class PointValue extends ScalarValue implements Point, Comparable<PointVa
             {
                 throw new InvalidValuesArgumentException( String.format( "Cannot assign %s to field %s", value, key ) );
             }
-        }
-
-        private void throwOnUnrecognizedKey( String key )
-        {
-            throw new InvalidValuesArgumentException( String.format( "Unknown key '%s' for creating new point", key ) );
         }
 
         private <T extends Number> T assertConvertible( Supplier<T> func )

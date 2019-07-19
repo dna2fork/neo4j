@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -77,8 +77,8 @@ public final class NodeKey implements CountsKey
         {
             org.neo4j.kernel.impl.store.counts.keys.NodeKey that =
                     (org.neo4j.kernel.impl.store.counts.keys.NodeKey) other;
-            return this.labelId - that.labelId;
+            return Integer.compare( this.labelId, that.labelId );
         }
-        return recordType().ordinal() - other.recordType().ordinal();
+        return recordType().compareTo( other.recordType() );
     }
 }

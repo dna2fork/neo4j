@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,16 +20,16 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.idp
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.LogicalPlanningContext
+import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps.PatternExpressionSolver
 import org.neo4j.cypher.internal.ir.v3_5._
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Solveds
+import org.neo4j.cypher.internal.v3_5.expressions.{Ands, Expression, LogicalVariable}
 import org.neo4j.cypher.internal.v3_5.logical.plans.{ExpandAll, ExpandInto, LogicalPlan}
-import org.opencypher.v9_0.expressions.{Ands, Expression, LogicalVariable}
 
 case class expandSolverStep(qg: QueryGraph) extends IDPSolverStep[PatternRelationship, LogicalPlan, LogicalPlanningContext] {
 
   import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.idp.expandSolverStep._
 
-  override def apply(registry: IdRegistry[PatternRelationship], goal: Goal, table: IDPCache[LogicalPlan], context: LogicalPlanningContext, solveds: Solveds): Iterator[LogicalPlan] = {
+  override def apply(registry: IdRegistry[PatternRelationship], goal: Goal, table: IDPCache[LogicalPlan], context: LogicalPlanningContext): Iterator[LogicalPlan] = {
     val result: Iterator[Iterator[LogicalPlan]] =
       for (patternId <- goal.iterator;
            pattern <- registry.lookup(patternId);
@@ -90,30 +90,35 @@ object expandSolverStep {
         val availablePredicates: Seq[Expression] =
           qg.selections.predicatesGiven(availableSymbols + patternRel.name)
         val tempNode = patternRel.name + "_NODES"
-        val tempEdge = patternRel.name + "_RELS"
-        val (nodePredicates: Seq[Expression], edgePredicates: Seq[Expression], legacyPredicates: Seq[(LogicalVariable,Expression)], solvedPredicates: Seq[Expression]) =
+        val tempRelationship = patternRel.name + "_RELS"
+        val (nodePredicates: Seq[Expression], relationshipPredicates: Seq[Expression], legacyPredicates: Seq[(LogicalVariable,Expression)], solvedPredicates: Seq[Expression]) =
           extractPredicates(
             availablePredicates,
-            originalEdgeName = patternRel.name,
-            tempEdge = tempEdge,
+            originalRelationshipName = patternRel.name,
+            tempRelationship = tempRelationship,
             tempNode = tempNode,
             originalNodeName = nodeId)
         val nodePredicate = Ands.create(nodePredicates.toSet)
-        val relationshipPredicate = Ands.create(edgePredicates.toSet)
+        val relationshipPredicate = Ands.create(relationshipPredicates.toSet)
+
+        val (rewrittenSource, rewrittenPredicates) =
+          PatternExpressionSolver().apply(sourcePlan, expressions = Seq(nodePredicate,  relationshipPredicate) ++ legacyPredicates.map(_._2), interestingOrder = InterestingOrder.empty, context)
+        val rewrittenNodePredicate :: rewrittenRelationshipPredicate :: rewrittenLegacyPredicateExpressions = rewrittenPredicates.toList
+        val rewrittenLegacyPredicates = legacyPredicates.map(_._1).zip(rewrittenLegacyPredicateExpressions)
 
         context.logicalPlanProducer.planVarExpand(
-          source = sourcePlan,
+          source = rewrittenSource,
           from = nodeId,
           dir = dir,
           to = otherSide,
           pattern = patternRel,
           temporaryNode = tempNode,
-          temporaryEdge = tempEdge,
-          edgePredicate = relationshipPredicate,
-          nodePredicate = nodePredicate,
+          temporaryRelationship = tempRelationship,
+          relationshipPredicate = rewrittenRelationshipPredicate,
+          nodePredicate = rewrittenNodePredicate,
           solvedPredicates = solvedPredicates,
           mode = mode,
-          legacyPredicates = legacyPredicates,
+          legacyPredicates = rewrittenLegacyPredicates,
           context = context)
     }
   }

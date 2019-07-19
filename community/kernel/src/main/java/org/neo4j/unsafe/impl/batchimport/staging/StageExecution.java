@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -32,7 +32,6 @@ import org.neo4j.unsafe.impl.batchimport.Configuration;
 import org.neo4j.unsafe.impl.batchimport.stats.Key;
 import org.neo4j.unsafe.impl.batchimport.stats.Stat;
 
-import static java.lang.System.currentTimeMillis;
 import static org.neo4j.helpers.Exceptions.throwIfUnchecked;
 
 /**
@@ -44,7 +43,6 @@ public class StageExecution implements StageControl, AutoCloseable
     private final String part;
     private final Configuration config;
     private final Collection<Step<?>> pipeline;
-    private long startTime;
     private final int orderingGuarantees;
     private volatile Throwable panic;
     private final boolean shouldRecycle;
@@ -76,16 +74,10 @@ public class StageExecution implements StageControl, AutoCloseable
 
     public void start()
     {
-        this.startTime = currentTimeMillis();
         for ( Step<?> step : pipeline )
         {
             step.start( orderingGuarantees );
         }
-    }
-
-    public long getExecutionTime()
-    {
-        return currentTimeMillis() - startTime;
     }
 
     public String getStageName()
@@ -167,6 +159,7 @@ public class StageExecution implements StageControl, AutoCloseable
             for ( Step<?> step : pipeline )
             {
                 step.receivePanic( cause );
+                step.endOfUpstream();
             }
         }
         else

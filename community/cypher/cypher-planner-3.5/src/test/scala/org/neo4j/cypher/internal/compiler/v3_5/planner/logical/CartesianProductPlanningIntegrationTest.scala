@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,7 +21,7 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.BeLikeMatcher._
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport2
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.ir.v3_5.RegularPlannerQuery
 import org.neo4j.cypher.internal.v3_5.logical.plans.{AllNodesScan, CartesianProduct, NodeByLabelScan, Selection}
 
@@ -43,7 +43,7 @@ class CartesianProductPlanningIntegrationTest extends CypherFunSuite with Logica
         case (_: NodeByLabelScan, _, _) => 20.0
       }
       cardinality = mapCardinality {
-        case RegularPlannerQuery(queryGraph, _, _) if queryGraph.selections.predicates.size == 1 => 10
+        case RegularPlannerQuery(queryGraph, _, _, _) if queryGraph.selections.predicates.size == 1 => 10
       }
     } getLogicalPlanFor  "MATCH (n), (m) WHERE n.prop = 12 AND m:Label RETURN n, m")._2 should beLike {
       case CartesianProduct(_: Selection, _: NodeByLabelScan) => ()

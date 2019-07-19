@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -115,11 +115,11 @@ public abstract class NeoServerRestartTestIT extends ExclusiveServerTestBase
 
         @Override
         public PageSwapper createPageSwapper( File file, int filePageSize, PageEvictionCallback onEviction,
-                boolean createIfNotExist ) throws IOException
+                boolean createIfNotExist, boolean noChannelStriping ) throws IOException
         {
             // This will be called early in the startup sequence. Notifies that we can call stop on the server.
             semaphore.release();
-            return super.createPageSwapper( file, filePageSize, onEviction, createIfNotExist );
+            return super.createPageSwapper( file, filePageSize, onEviction, createIfNotExist, noChannelStriping );
         }
     }
 }

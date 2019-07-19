@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,7 +20,7 @@
 package org.neo4j.cypher.internal
 
 import org.neo4j.cypher._
-import org.opencypher.v9_0.util.InputPosition
+import org.neo4j.cypher.internal.v3_5.util.InputPosition
 
 /**
   * Representation a pre-parsed Cypher query.
@@ -34,7 +34,9 @@ case class PreParsedQuery(statement: String,
                           planner: CypherPlannerOption,
                           runtime: CypherRuntimeOption,
                           updateStrategy: CypherUpdateStrategy,
-                          debugOptions: Set[String]) {
+                          expressionEngine: CypherExpressionEngineOption,
+                          debugOptions: Set[String],
+                          recompilationLimitReached: Boolean = false) {
 
   val statementWithVersionAndPlanner: String = {
     val plannerInfo = planner match {
@@ -49,8 +51,20 @@ case class PreParsedQuery(statement: String,
       case CypherUpdateStrategy.default => ""
       case _ => s"updateStrategy=${updateStrategy.name}"
     }
+
+    val expressionEngineInfo = expressionEngine match {
+      case CypherExpressionEngineOption.default | CypherExpressionEngineOption.onlyWhenHot => ""
+      case _ => s"expressionEngine=${expressionEngine.name}"
+    }
+
     val debugFlags = debugOptions.map(flag => s"debug=$flag").mkString(" ")
 
-    s"CYPHER ${version.name} $plannerInfo $runtimeInfo $updateStrategyInfo $debugFlags $statement"
+    s"CYPHER ${version.name} $plannerInfo $runtimeInfo $updateStrategyInfo $expressionEngineInfo $debugFlags $statement"
   }
+
+  def rawPreparserOptions: String =
+    rawStatement.take(rawStatement.length - statement.length)
+
+  def useCompiledExpressions: Boolean = expressionEngine == CypherExpressionEngineOption.compiled ||
+    (expressionEngine == CypherExpressionEngineOption.onlyWhenHot && recompilationLimitReached)
 }

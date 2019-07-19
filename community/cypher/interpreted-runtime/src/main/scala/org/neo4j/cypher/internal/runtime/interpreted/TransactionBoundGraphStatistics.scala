@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,11 +19,17 @@
  */
 package org.neo4j.cypher.internal.runtime.interpreted
 
-import org.neo4j.cypher.internal.planner.v3_5.spi.{GraphStatistics, IndexDescriptor, StatisticsCompletingGraphStatistics}
-import org.opencypher.v9_0.util.{Cardinality, LabelId, RelTypeId, Selectivity}
-import org.neo4j.internal.kernel.api.{Read, SchemaRead}
-import org.neo4j.kernel.api.exceptions.index.IndexNotFoundKernelException
+import org.neo4j.cypher.internal.planner.v3_5.spi.GraphStatistics
+import org.neo4j.cypher.internal.planner.v3_5.spi.IndexDescriptor
+import org.neo4j.cypher.internal.planner.v3_5.spi.StatisticsCompletingGraphStatistics
+import org.neo4j.internal.kernel.api.exceptions.schema.IndexNotFoundKernelException
+import org.neo4j.internal.kernel.api.Read
+import org.neo4j.internal.kernel.api.SchemaRead
 import org.neo4j.kernel.impl.query.TransactionalContext
+import org.neo4j.cypher.internal.v3_5.util.Cardinality
+import org.neo4j.cypher.internal.v3_5.util.LabelId
+import org.neo4j.cypher.internal.v3_5.util.RelTypeId
+import org.neo4j.cypher.internal.v3_5.util.Selectivity
 
 object TransactionBoundGraphStatistics {
   def apply(transactionalContext: TransactionalContext): StatisticsCompletingGraphStatistics =
@@ -34,40 +40,48 @@ object TransactionBoundGraphStatistics {
 
   private class BaseTransactionBoundGraphStatistics(read: Read, schemaRead: SchemaRead) extends GraphStatistics with IndexDescriptorCompatibility {
 
-    def indexSelectivity(index: IndexDescriptor): Option[Selectivity] =
+    override def uniqueValueSelectivity(index: IndexDescriptor): Option[Selectivity] =
       try {
-        val labeledNodes = read.countsForNodeWithoutTxState( index.label ).toDouble
+        val indexSize = schemaRead.indexSize(schemaRead.indexReferenceUnchecked(index.label, index.properties.map(_.id):_*))
+        if (indexSize == 0)
+          Some(Selectivity.ZERO)
+        else {
+          // Probability of any node in the index, to have a property with a given value
+          val indexEntrySelectivity = schemaRead.indexUniqueValuesSelectivity(
+            schemaRead.indexReferenceUnchecked(index.label, index.properties.map(_.id):_*))
+          val frequencyOfNodesWithSameValue = 1.0 / indexEntrySelectivity
 
-        // Probability of any node with the given label, to have a property with a given value
-        val indexEntrySelectivity = schemaRead.indexUniqueValuesSelectivity(
-          schemaRead.indexReferenceUnchecked(index.label, index.properties.map(_.id):_*))
-        val frequencyOfNodesWithSameValue = 1.0 / indexEntrySelectivity
-        val indexSelectivity = frequencyOfNodesWithSameValue / labeledNodes
+          // This is = 1 / number of unique values
+          val indexSelectivity = frequencyOfNodesWithSameValue / indexSize
 
-        Selectivity.of(indexSelectivity)
+          Selectivity.of(indexSelectivity)
+        }
       }
       catch {
         case _: IndexNotFoundKernelException => None
       }
 
-    def indexPropertyExistsSelectivity(index: IndexDescriptor): Option[Selectivity] =
+    override def indexPropertyExistsSelectivity(index: IndexDescriptor): Option[Selectivity] =
       try {
         val labeledNodes = read.countsForNodeWithoutTxState( index.label ).toDouble
+        if (labeledNodes == 0)
+          Some(Selectivity.ZERO)
+        else {
+          // Probability of any node with the given label, to have a given property
+          val indexSize = schemaRead.indexSize(schemaRead.indexReferenceUnchecked(index.label, index.properties.map(_.id):_*))
+          val indexSelectivity = indexSize / labeledNodes
 
-        // Probability of any node with the given label, to have a given property
-        val indexSize = schemaRead.indexSize(schemaRead.indexReferenceUnchecked(index.label, index.properties.map(_.id):_*))
-        val indexSelectivity = indexSize / labeledNodes
-
-        Selectivity.of(indexSelectivity)
+          Selectivity.of(indexSelectivity)
+        }
       }
       catch {
         case e: IndexNotFoundKernelException => None
       }
 
-    def nodesWithLabelCardinality(labelId: Option[LabelId]): Cardinality =
+    override def nodesWithLabelCardinality(labelId: Option[LabelId]): Cardinality =
       atLeastOne(read.countsForNodeWithoutTxState(labelId))
 
-    def cardinalityByLabelsAndRelationshipType(fromLabel: Option[LabelId], relTypeId: Option[RelTypeId], toLabel: Option[LabelId]): Cardinality =
+    override def cardinalityByLabelsAndRelationshipType(fromLabel: Option[LabelId], relTypeId: Option[RelTypeId], toLabel: Option[LabelId]): Cardinality =
       atLeastOne(read.countsForRelationshipWithoutTxState(fromLabel, relTypeId, toLabel))
 
     /**

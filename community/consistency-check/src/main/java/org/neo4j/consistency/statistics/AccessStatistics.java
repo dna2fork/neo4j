@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -107,7 +107,7 @@ public class AccessStatistics
             // but keep here as a reminder to do so
 //          if ( scatterIndex > 0.5 )
 //          {
-//              buf.append( format( "%n *** Property Store reorgization is recommended for optimal performance ***" ) );
+//              buf.append( format( "%n *** Property Store reorganization is recommended for optimal performance ***" ) );
 //          }
 
             return buf.toString();

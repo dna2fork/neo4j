@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -53,7 +53,10 @@ public class GraphDatabaseBuilder
          * @deprecated this method will go away in 4.0. See {@link #newDatabase(Config)} instead.
          */
         @Deprecated
-        GraphDatabaseService newDatabase( Map<String,String> config );
+        default GraphDatabaseService newDatabase( Map<String,String> config )
+        {
+            return newDatabase( Config.defaults( config ) );
+        }
 
         /**
          * @param config initial configuration for the database.
@@ -69,7 +72,7 @@ public class GraphDatabaseBuilder
     protected Map<String,String> config = new HashMap<>();
 
     /**
-     * @deprecated Use {@link GraphDatabaseFactory} to get instances of this class.
+     * @deprecated
      */
     @Deprecated
     public GraphDatabaseBuilder( DatabaseCreator creator )
@@ -205,14 +208,6 @@ public class GraphDatabaseBuilder
     public GraphDatabaseService newGraphDatabase()
     {
         return creator.newDatabase( Config.defaults( config ) );
-    }
-
-    /**
-     * Used by tests via GraphDatabaseBuilderTestTools.
-     */
-    Map<String,String> getRawConfig()
-    {
-        return config;
     }
 
     /**

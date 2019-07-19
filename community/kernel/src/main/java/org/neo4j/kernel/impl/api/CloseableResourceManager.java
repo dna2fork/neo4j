@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -63,7 +63,7 @@ public class CloseableResourceManager implements ResourceManager
             Collection<AutoCloseable> resourcesToClose = closeableResources;
             closeableResources = null;
 
-            IOUtils.closeAll( ResourceCloseFailureException.class, resourcesToClose.toArray( new AutoCloseable[0] ) );
+            IOUtils.close( ResourceCloseFailureException::new, resourcesToClose.toArray( new AutoCloseable[0] ) );
         }
     }
 }

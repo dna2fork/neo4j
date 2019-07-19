@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,14 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.debug
 
-import org.neo4j.cypher.internal.compiler.v3_5.phases.{PlannerContext, LogicalPlanState}
-import org.opencypher.v9_0.ast._
-import org.opencypher.v9_0.frontend.phases.{Condition, Phase}
-import org.opencypher.v9_0.util.InputPosition
-import org.opencypher.v9_0.util.attribution.SequentialIdGen
-import org.opencypher.v9_0.expressions.{ListLiteral, StringLiteral, Variable}
+import org.neo4j.cypher.internal.compiler.v3_5.phases.{LogicalPlanState, PlannerContext}
 import org.neo4j.cypher.internal.v3_5.logical.plans.{Argument, LogicalPlan, ProduceResult, UnwindCollection}
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.LOGICAL_PLANNING
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.expressions.{ListLiteral, StringLiteral, Variable}
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer.CompilationPhase.LOGICAL_PLANNING
+import org.neo4j.cypher.internal.v3_5.frontend.phases.{CompilationPhaseTracer, Condition, Phase}
+import org.neo4j.cypher.internal.v3_5.util.InputPosition
+import org.neo4j.cypher.internal.v3_5.util.attribution.SequentialIdGen
 
 object DebugPrinter extends Phase[PlannerContext, LogicalPlanState, LogicalPlanState] {
   override def phase: CompilationPhaseTracer.CompilationPhase = LOGICAL_PLANNING
@@ -56,14 +55,14 @@ object DebugPrinter extends Phase[PlannerContext, LogicalPlanState, LogicalPlanS
   private def stringToLogicalPlan(string: String): (LogicalPlan, Statement) = {
     implicit val idGen = new SequentialIdGen()
     val pos = InputPosition(0, 0, 0)
-    val stringValues = string.split("\n").map(s => StringLiteral(s)(pos))
+    val stringValues = string.split(System.lineSeparator()).map(s => StringLiteral(s)(pos))
     val expression = ListLiteral(stringValues.toSeq)(pos)
     val unwind = UnwindCollection(Argument(Set.empty), "col", expression)
     val logicalPlan = ProduceResult(unwind, Seq("col"))
 
     val variable = Variable("col")(pos)
     val returnItem = AliasedReturnItem(variable, variable)(pos)
-    val returnClause = Return(distinct = false, ReturnItems(includeExisting = false, Seq(returnItem))(pos), None, None, None, None, Set.empty)(pos)
+    val returnClause = Return(distinct = false, ReturnItems(includeExisting = false, Seq(returnItem))(pos), None, None, None, Set.empty)(pos)
     val newStatement = Query(None, SingleQuery(Seq(returnClause))(pos))(pos)
 
     (logicalPlan, newStatement)

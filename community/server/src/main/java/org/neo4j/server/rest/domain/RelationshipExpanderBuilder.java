@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -92,6 +92,6 @@ public class RelationshipExpanderBuilder
                 }
             }
         }
-        throw new RuntimeException( "Unregognized " + enumClass.getSimpleName() + " '" + name + "'" );
+        throw new RuntimeException( "Unrecognized " + enumClass.getSimpleName() + " '" + name + "'" );
     }
 }

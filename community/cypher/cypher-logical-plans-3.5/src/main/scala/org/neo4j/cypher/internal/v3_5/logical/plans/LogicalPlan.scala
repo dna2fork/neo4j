@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,18 @@ package org.neo4j.cypher.internal.v3_5.logical.plans
 
 import java.lang.reflect.Method
 
-import org.neo4j.cypher.internal.ir.v3_5.{PlannerQuery, Strictness}
-import org.opencypher.v9_0.expressions.Expression
-import org.opencypher.v9_0.util.Foldable._
-import org.opencypher.v9_0.util.Rewritable._
-import org.opencypher.v9_0.util.attribution.{Id, IdGen, SameId}
-import org.opencypher.v9_0.util.{Foldable, InternalException, Rewritable}
+import org.neo4j.cypher.internal.ir.v3_5.PlannerQuery
+import org.neo4j.cypher.internal.ir.v3_5.Strictness
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.Foldable._
+import org.neo4j.cypher.internal.v3_5.util.Rewritable._
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
+import org.neo4j.cypher.internal.v3_5.util.attribution.IdGen
+import org.neo4j.cypher.internal.v3_5.util.attribution.SameId
+import org.neo4j.cypher.internal.v3_5.util.Foldable
+import org.neo4j.cypher.internal.v3_5.util.InputPosition
+import org.neo4j.cypher.internal.v3_5.util.InternalException
+import org.neo4j.cypher.internal.v3_5.util.Rewritable
 
 import scala.collection.mutable
 import scala.util.hashing.MurmurHash3
@@ -52,6 +58,14 @@ abstract class LogicalPlan(idGen: IdGen)
   def lhs: Option[LogicalPlan]
   def rhs: Option[LogicalPlan]
   def availableSymbols: Set[String]
+
+  /**
+    * Node properties that will be cached in the execution context.
+    */
+  def availableCachedNodeProperties: Map[Property, CachedNodeProperty] = {
+    lhs.fold(Map.empty[Property, CachedNodeProperty])(_.availableCachedNodeProperties) ++
+      rhs.fold(Map.empty[Property, CachedNodeProperty])(_.availableCachedNodeProperties)
+  }
 
   val id: Id = idGen.id()
 
@@ -182,14 +196,14 @@ abstract class LogicalPlan(idGen: IdGen)
   def flatten: Seq[LogicalPlan] = Flattener.create(this)
 
   def indexUsage: Seq[IndexUsage] = {
-    import org.opencypher.v9_0.util.Foldable._
+    import org.neo4j.cypher.internal.v3_5.util.Foldable._
     this.fold(Seq.empty[IndexUsage]) {
-      case NodeIndexSeek(idName, label, propertyKeys, _, _) =>
-        (acc) => acc :+ SchemaIndexSeekUsage(idName, label.nameId.id, label.name, propertyKeys.map(_.name))
-      case NodeUniqueIndexSeek(idName, label, propertyKeys, _, _) =>
-        (acc) => acc :+ SchemaIndexSeekUsage(idName, label.nameId.id, label.name, propertyKeys.map(_.name))
-      case NodeIndexScan(idName, label, propertyKey, _) =>
-        (acc) => acc :+ SchemaIndexScanUsage(idName, label.nameId.id, label.name, propertyKey.name)
+      case NodeIndexSeek(idName, label, properties, _, _, _) =>
+        acc => acc :+ SchemaIndexSeekUsage(idName, label.nameId.id, label.name, properties.map(_.propertyKeyToken.name))
+      case NodeUniqueIndexSeek(idName, label, properties, _, _, _) =>
+        acc => acc :+ SchemaIndexSeekUsage(idName, label.nameId.id, label.name, properties.map(_.propertyKeyToken.name))
+      case NodeIndexScan(idName, label, property, _, _) =>
+        acc => acc :+ SchemaIndexScanUsage(idName, label.nameId.id, label.name, property.propertyKeyToken.name)
       }
   }
 }
@@ -205,7 +219,36 @@ abstract class NodeLogicalLeafPlan(idGen: IdGen) extends LogicalLeafPlan(idGen) 
 }
 
 abstract class IndexLeafPlan(idGen: IdGen) extends NodeLogicalLeafPlan(idGen) {
+  /**
+    * Indexed node properties that will be retrieved from the index and cached in the row.
+    */
+  def cachedNodeProperties: Traversable[CachedNodeProperty]
+
+  /**
+    * All properties
+    */
+  def properties: Seq[IndexedProperty]
+
+  /**
+    * Get a copy of this index plan where getting values is disabled
+    */
+  def copyWithoutGettingValues: IndexLeafPlan
+}
+
+abstract class IndexSeekLeafPlan(idGen: IdGen) extends IndexLeafPlan(idGen) {
+
   def valueExpr: QueryExpression[Expression]
+
+  /**
+    * The indexed node properties that this plan targets.
+    */
+  def properties: Seq[IndexedProperty]
+
+  override val cachedNodeProperties: Seq[CachedNodeProperty] =
+    properties.filter(_.shouldGetValue).map(_.asCachedNodeProperty(idName))
+
+  override def availableCachedNodeProperties: Map[Property, CachedNodeProperty] =
+    properties.filter(_.getValueFromIndex == GetValue).flatMap(_.asAvailablePropertyMap(idName)).toMap
 }
 
 case object Flattener extends TreeBuilder[Seq[LogicalPlan]] {

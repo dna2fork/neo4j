@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,7 +22,7 @@ package org.neo4j.cypher.internal.runtime.interpreted
 import java.time._
 import java.time.temporal.TemporalAmount
 
-import org.opencypher.v9_0.util.CypherTypeException
+import org.neo4j.cypher.internal.v3_5.util.CypherTypeException
 import org.neo4j.graphdb.spatial.Point
 import org.neo4j.values.storable.{ArrayValue, _}
 import org.neo4j.values.virtual._
@@ -54,11 +54,14 @@ object CastSupport {
       s"Expected $value to be a ${ev.runtimeClass.getName}, but it was a ${value.getClass.getName}")
   }
 
-  def castOrFail[A >: AnyValue](value: AnyValue)(implicit ev: ClassTag[A]): A = value match {
+  def castOrFail[A <: AnyValue](value: AnyValue)(implicit ev: ClassTag[A]): A = value match {
     case v: A => v
-    case _ => throw new CypherTypeException(
-      s"Expected $value to be a Number, but it was a String")
+    case _ => throw typeError[A](value)
   }
+
+  def typeError[A <: AnyValue](value: AnyValue)(implicit ev: ClassTag[A]): CypherTypeException =
+    throw new CypherTypeException(
+      s"Expected $value to be a ${ev.runtimeClass.getName}, but it was a ${value.getClass.getName}")
 
   /*
   This method takes two values and finds the type both values could be represented in.

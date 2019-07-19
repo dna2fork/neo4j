@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,14 +20,14 @@
 package org.neo4j.cypher.internal.compatibility.v3_1
 
 import org.neo4j.cypher.InternalException
-import org.opencypher.v9_0.util.InputPosition
+import org.neo4j.cypher.internal.v3_5.util.InputPosition
 import org.neo4j.cypher.internal.compiler.v3_1
 import org.neo4j.cypher.internal.compiler.v3_1.CompilationPhaseTracer.{CompilationPhaseEvent, CompilationPhase => v3_1Phase}
 import org.neo4j.cypher.internal.compiler.v3_1.{CypherCompilerConfiguration => CypherCompilerConfiguration3_1}
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.{CompilationPhase => v3_5Phase}
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer.{CompilationPhase => v3_5Phase}
 import org.neo4j.cypher.internal.compiler.v3_5.CypherPlannerConfiguration
 import org.neo4j.cypher.internal.frontend.v3_1.{InputPosition => InputPosition3_1}
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer
 import org.neo4j.kernel.impl.query.{QueryExecutionMonitor, TransactionalContext}
 
 object helpers {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,8 +21,8 @@ package org.neo4j.cypher.internal.compiler.v3_5.planner.logical
 
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport2
 import org.neo4j.cypher.internal.v3_5.logical.plans.{Expand, NodeByLabelScan, Projection, Selection}
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.expressions._
 
 class NamedPathProjectionPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
 
@@ -30,7 +30,7 @@ class NamedPathProjectionPlanningIntegrationTest extends CypherFunSuite with Log
     planFor("MATCH p = (a:X)-[r]->(b) RETURN p")._2 should equal(
       Projection(
         Expand( NodeByLabelScan("a",  lblName("X"), Set.empty), "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r"),
-        expressions = Map(
+        projectExpressions = Map(
           "p" -> PathExpression(NodePathStep(Variable("a")_,SingleRelationshipPathStep(Variable("r")_, SemanticDirection.OUTGOING, NilPathStep)))_
         )
       )
@@ -44,10 +44,10 @@ class NamedPathProjectionPlanningIntegrationTest extends CypherFunSuite with Log
 
     result should equal(
       Selection(
-        Seq(Equals(
+        Ands(Set(Equals(
           FunctionInvocation(FunctionName("head") _, FunctionInvocation(FunctionName("nodes") _, pathExpr) _) _,
           varFor("a")
-        ) _),
+        ) _))_,
           Expand(NodeByLabelScan("a", lblName("X"), Set.empty), "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r")
       )
     )
@@ -60,7 +60,7 @@ class NamedPathProjectionPlanningIntegrationTest extends CypherFunSuite with Log
 
     result should equal(
       Selection(
-        Seq(
+        Ands(Set(
           Equals(
             FunctionInvocation(FunctionName("head") _, FunctionInvocation(FunctionName("nodes") _, pathExpr) _) _,
             Variable("a") _
@@ -69,7 +69,7 @@ class NamedPathProjectionPlanningIntegrationTest extends CypherFunSuite with Log
             FunctionInvocation(FunctionName("length") _, pathExpr) _,
             SignedDecimalIntegerLiteral("10") _
           ) _
-        ),
+        ))_,
           Expand(NodeByLabelScan("a", lblName("X"), Set.empty), "a", SemanticDirection.OUTGOING, Seq.empty, "b", "r")
       )
     )

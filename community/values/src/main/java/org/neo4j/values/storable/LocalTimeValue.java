@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -61,7 +61,12 @@ public final class LocalTimeValue extends TemporalValue<LocalTime,LocalTimeValue
 
     public static LocalTimeValue localTime( long nanoOfDay )
     {
-        return new LocalTimeValue( assertValidArgument( () -> LocalTime.ofNanoOfDay( nanoOfDay ) ) );
+        return new LocalTimeValue( localTimeRaw( nanoOfDay ) );
+    }
+
+    public static LocalTime localTimeRaw( long nanoOfDay )
+    {
+        return assertValidArgument( () -> LocalTime.ofNanoOfDay( nanoOfDay ) );
     }
 
     public static LocalTimeValue parse( CharSequence text )
@@ -127,7 +132,7 @@ public final class LocalTimeValue extends TemporalValue<LocalTime,LocalTimeValue
         }
     }
 
-    static final LocalTime DEFAULT_LOCAL_TIME = LocalTime.of( Field.hour.defaultValue, Field.minute.defaultValue );
+    static final LocalTime DEFAULT_LOCAL_TIME = LocalTime.of( TemporalFields.hour.defaultValue, TemporalFields.minute.defaultValue );
 
     static TimeValue.TimeBuilder<LocalTimeValue> builder( Supplier<ZoneId> defaultZone )
     {
@@ -143,9 +148,9 @@ public final class LocalTimeValue extends TemporalValue<LocalTime,LocalTimeValue
             public LocalTimeValue buildInternal()
             {
                 LocalTime result;
-                if ( fields.containsKey( Field.time ) )
+                if ( fields.containsKey( TemporalFields.time ) )
                 {
-                    AnyValue time = fields.get( Field.time );
+                    AnyValue time = fields.get( TemporalFields.time );
                     if ( !(time instanceof TemporalValue) )
                     {
                         throw new InvalidValuesArgumentException( String.format( "Cannot construct local time from: %s", time ) );
@@ -195,6 +200,12 @@ public final class LocalTimeValue extends TemporalValue<LocalTime,LocalTimeValue
     LocalTime temporal()
     {
         return value;
+    }
+
+    @Override
+    public String getTypeName()
+    {
+        return "LocalTime";
     }
 
     @Override

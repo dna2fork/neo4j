@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,6 +21,7 @@ package org.neo4j.consistency.checking.full;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.neo4j.consistency.RecordType;
 import org.neo4j.consistency.checking.NodeRecordCheck;
@@ -40,15 +41,20 @@ import org.neo4j.consistency.statistics.Statistics;
 import org.neo4j.consistency.store.synthetic.IndexRecord;
 import org.neo4j.consistency.store.synthetic.LabelScanIndex;
 import org.neo4j.helpers.collection.BoundedIterable;
+import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
+import org.neo4j.internal.kernel.api.TokenNameLookup;
 import org.neo4j.kernel.api.labelscan.LabelScanStore;
+import org.neo4j.kernel.impl.api.NonTransactionalTokenNameLookup;
+import org.neo4j.kernel.impl.core.TokenHolders;
 import org.neo4j.kernel.impl.index.labelscan.NativeLabelScanStore;
 import org.neo4j.kernel.impl.store.RecordStore;
 import org.neo4j.kernel.impl.store.Scanner;
 import org.neo4j.kernel.impl.store.SchemaStorage;
 import org.neo4j.kernel.impl.store.StoreAccess;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
+import org.neo4j.storageengine.api.EntityType;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 import static java.lang.String.format;
 import static org.neo4j.consistency.checking.full.MultiPassStore.ARRAYS;
@@ -66,6 +72,7 @@ public class ConsistencyCheckTasks
     private final StoreProcessor defaultProcessor;
     private final StoreAccess nativeStores;
     private final Statistics statistics;
+    private final TokenHolders tokenHolders;
     private final MultiPassStore.Factory multiPass;
     private final ConsistencyReporter reporter;
     private final LabelScanStore labelScanStore;
@@ -76,13 +83,14 @@ public class ConsistencyCheckTasks
     ConsistencyCheckTasks( ProgressMonitorFactory.MultiPartBuilder multiPartBuilder,
             StoreProcessor defaultProcessor, StoreAccess nativeStores, Statistics statistics,
             CacheAccess cacheAccess, LabelScanStore labelScanStore,
-            IndexAccessors indexes, MultiPassStore.Factory multiPass, ConsistencyReporter reporter, int numberOfThreads )
+            IndexAccessors indexes, TokenHolders tokenHolders, MultiPassStore.Factory multiPass, ConsistencyReporter reporter, int numberOfThreads )
     {
         this.multiPartBuilder = multiPartBuilder;
         this.defaultProcessor = defaultProcessor;
         this.nativeStores = nativeStores;
         this.statistics = statistics;
         this.cacheAccess = cacheAccess;
+        this.tokenHolders = tokenHolders;
         this.multiPass = multiPass;
         this.reporter = reporter;
         this.labelScanStore = labelScanStore;
@@ -101,7 +109,7 @@ public class ConsistencyCheckTasks
                     multiPass.processor( CheckStage.Stage1_NS_PropsLabels, PROPERTIES );
             tasks.add( create( CheckStage.Stage1_NS_PropsLabels.name(), nativeStores.getNodeStore(),
                     processor, ROUND_ROBIN ) );
-            //ReltionshipStore pass - check label counts using cached labels, check properties, skip nodes and relationships
+            //RelationshipStore pass - check label counts using cached labels, check properties, skip nodes and relationships
             processor = multiPass.processor( CheckStage.Stage2_RS_Labels, LABELS );
             multiPass.reDecorateRelationship( processor, RelationshipRecordCheck.relationshipRecordCheckForwardPass() );
             tasks.add( create( CheckStage.Stage2_RS_Labels.name(), nativeStores.getRelationshipStore(),
@@ -145,6 +153,20 @@ public class ConsistencyCheckTasks
                             propertyReader, cacheAccess, mandatoryProperties.forNodes( reporter ) ),
                     CheckStage.Stage8_PS_Props, ROUND_ROBIN,
                     new IterableStore<>( nativeStores.getPropertyStore(), true ) ) );
+
+            // Checking that relationships are in their expected relationship indexes.
+            List<StoreIndexDescriptor> relationshipIndexes = Iterables.stream( indexes.onlineRules() )
+                    .filter( rule -> rule.schema().entityType() == EntityType.RELATIONSHIP )
+                    .collect( Collectors.toList() );
+            if ( checkIndexes && !relationshipIndexes.isEmpty() )
+            {
+                tasks.add( recordScanner( CheckStage.Stage9_RS_Indexes.name(),
+                        new IterableStore<>( nativeStores.getRelationshipStore(), true ),
+                        new RelationshipIndexProcessor( reporter, indexes, propertyReader, relationshipIndexes ),
+                        CheckStage.Stage9_RS_Indexes,
+                        ROUND_ROBIN,
+                        new IterableStore<>( nativeStores.getPropertyStore(), true ) ) );
+            }
 
             tasks.add( create( "StringStore-Str", nativeStores.getStringStore(),
                     multiPass.processor( Stage.SEQUENTIAL_FORWARD, STRINGS ), ROUND_ROBIN ) );
@@ -190,11 +212,12 @@ public class ConsistencyCheckTasks
         if ( checkIndexes )
         {
             tasks.add( new IndexDirtyCheckTask() );
+            TokenNameLookup tokenNameLookup = new NonTransactionalTokenNameLookup( tokenHolders, true /*include token ids too*/ );
             for ( StoreIndexDescriptor indexRule : indexes.onlineRules() )
             {
                 tasks.add( recordScanner( format( "Index_%d", indexRule.getId() ),
                         new IndexIterator( indexes.accessorFor( indexRule ) ),
-                        new IndexEntryProcessor( filteredReporter, new IndexCheck( indexRule ) ),
+                        new IndexEntryProcessor( filteredReporter, new IndexCheck( indexRule ), indexRule, tokenNameLookup ),
                         Stage.SEQUENTIAL_FORWARD, ROUND_ROBIN ) );
             }
         }
@@ -241,7 +264,7 @@ public class ConsistencyCheckTasks
             {
                 if ( ((NativeLabelScanStore)labelScanStore).isDirty() )
                 {
-                    reporter.report( new LabelScanIndex(), ConsistencyReport.LabelScanConsistencyReport.class,
+                    reporter.report( new LabelScanIndex( labelScanStore.getLabelScanStoreFile() ), ConsistencyReport.LabelScanConsistencyReport.class,
                             RecordType.LABEL_SCAN_DOCUMENT ).dirtyIndex();
                 }
             }

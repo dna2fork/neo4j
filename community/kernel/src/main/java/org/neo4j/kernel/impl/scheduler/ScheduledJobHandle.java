@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.neo4j.scheduler.JobScheduler;
-import org.neo4j.scheduler.JobScheduler.CancelListener;
-import org.neo4j.scheduler.JobScheduler.JobHandle;
+import org.neo4j.scheduler.Group;
+import org.neo4j.scheduler.CancelListener;
+import org.neo4j.scheduler.JobHandle;
 import org.neo4j.util.concurrent.BinaryLatch;
 
 /**
@@ -62,14 +62,14 @@ final class ScheduledJobHandle extends AtomicInteger implements JobHandle
     //   or happens after the relevant handles have been added to the queue.
     long nextDeadlineNanos;
 
-    private final JobScheduler.Group group;
+    private final Group group;
     private final CopyOnWriteArrayList<CancelListener> cancelListeners;
     private final BinaryLatch handleRelease;
     private final Runnable task;
     private volatile JobHandle latestHandle;
     private volatile Throwable lastException;
 
-    ScheduledJobHandle( TimeBasedTaskScheduler scheduler, JobScheduler.Group group, Runnable task,
+    ScheduledJobHandle( TimeBasedTaskScheduler scheduler, Group group, Runnable task,
                         long nextDeadlineNanos, long reschedulingDelayNanos )
     {
         this.group = group;

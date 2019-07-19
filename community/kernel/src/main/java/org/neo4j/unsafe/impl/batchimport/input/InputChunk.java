@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -28,19 +28,6 @@ import java.io.IOException;
  */
 public interface InputChunk extends Closeable
 {
-    InputChunk EMPTY = new InputChunk()
-    {
-        @Override
-        public boolean next( InputEntityVisitor visitor )
-        {
-            return false;
-        }
-
-        @Override
-        public void close()
-        {
-        }
-    };
 
     boolean next( InputEntityVisitor visitor ) throws IOException;
 }

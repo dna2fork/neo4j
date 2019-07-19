@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -47,6 +47,7 @@ import static org.neo4j.collection.PrimitiveLongCollections.asArray;
 import static org.neo4j.kernel.impl.index.labelscan.NativeLabelScanStoreIT.flipRandom;
 import static org.neo4j.kernel.impl.index.labelscan.NativeLabelScanStoreIT.getLabels;
 import static org.neo4j.kernel.impl.index.labelscan.NativeLabelScanStoreIT.nodesWithLabel;
+import static org.neo4j.storageengine.api.schema.LabelScanReader.NO_ID;
 
 public class NativeLabelScanWriterTest
 {
@@ -63,7 +64,7 @@ public class NativeLabelScanWriterTest
         // GIVEN
         ControlledInserter inserter = new ControlledInserter();
         long[] expected = new long[NODE_COUNT];
-        try ( NativeLabelScanWriter writer = new NativeLabelScanWriter( max( 5, NODE_COUNT / 100 ) ) )
+        try ( NativeLabelScanWriter writer = new NativeLabelScanWriter( max( 5, NODE_COUNT / 100 ), NativeLabelScanWriter.EMPTY ) )
         {
             writer.initialize( inserter );
 
@@ -79,7 +80,7 @@ public class NativeLabelScanWriterTest
         for ( int i = 0; i < LABEL_COUNT; i++ )
         {
             long[] expectedNodeIds = nodesWithLabel( expected, i );
-            long[] actualNodeIds = asArray( new LabelScanValueIterator( inserter.nodesFor( i ), new ArrayList<>() ) );
+            long[] actualNodeIds = asArray( new LabelScanValueIterator( inserter.nodesFor( i ), new ArrayList<>(), NO_ID ) );
             assertArrayEquals( "For label " + i, expectedNodeIds, actualNodeIds );
         }
     }
@@ -90,7 +91,7 @@ public class NativeLabelScanWriterTest
         // GIVEN
         ControlledInserter inserter = new ControlledInserter();
         boolean failed = false;
-        try ( NativeLabelScanWriter writer = new NativeLabelScanWriter( 1 ) )
+        try ( NativeLabelScanWriter writer = new NativeLabelScanWriter( 1, NativeLabelScanWriter.EMPTY ) )
         {
             writer.initialize( inserter );
 

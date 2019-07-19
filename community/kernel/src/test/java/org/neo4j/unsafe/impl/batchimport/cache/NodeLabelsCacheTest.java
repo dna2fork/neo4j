@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -28,7 +28,7 @@ import org.neo4j.test.Race;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertSame;
 
 public class NodeLabelsCacheTest
 {
@@ -103,7 +103,7 @@ public class NodeLabelsCacheTest
 
         // WHEN
         int[] target = new int[20];
-        assertTrue( target == cache.get( client, 10, target ) );
+        assertSame( target, cache.get( client, 10, target ) );
         assertEquals( 5, target[0] );
         assertEquals( 6, target[1] );
         assertEquals( 7, target[2] );

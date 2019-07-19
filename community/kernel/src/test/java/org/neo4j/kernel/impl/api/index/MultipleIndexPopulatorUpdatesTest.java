@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -38,27 +38,29 @@ import org.neo4j.kernel.api.index.IndexPopulator;
 import org.neo4j.kernel.api.index.IndexUpdater;
 import org.neo4j.kernel.api.labelscan.NodeLabelUpdate;
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
+import org.neo4j.kernel.impl.api.SchemaState;
 import org.neo4j.kernel.impl.locking.LockService;
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.RecordStorageReader;
 import org.neo4j.kernel.impl.store.InlineNodeLabels;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.store.NodeStore;
-import org.neo4j.kernel.impl.store.PropertyStore;
-import org.neo4j.kernel.impl.store.counts.CountsTracker;
 import org.neo4j.kernel.impl.store.record.NodeRecord;
 import org.neo4j.kernel.impl.transaction.state.storeview.NeoStoreIndexStoreView;
 import org.neo4j.kernel.impl.transaction.state.storeview.StoreViewNodeStoreScan;
 import org.neo4j.kernel.impl.util.Listener;
 import org.neo4j.logging.LogProvider;
+import org.neo4j.storageengine.api.EntityType;
+import org.neo4j.storageengine.api.StorageNodeCursor;
+import org.neo4j.storageengine.api.StorageReader;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 import org.neo4j.values.storable.Values;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
-import static org.neo4j.kernel.impl.api.index.TestIndexProviderDescriptor.PROVIDER_DESCRIPTOR;
 
 @RunWith( MockitoJUnitRunner.class )
 public class MultipleIndexPopulatorUpdatesTest
@@ -71,21 +73,14 @@ public class MultipleIndexPopulatorUpdatesTest
             throws IndexPopulationFailedKernelException, IOException, IndexEntryConflictException
     {
         NeoStores neoStores = Mockito.mock( NeoStores.class );
-        CountsTracker countsTracker = mock( CountsTracker.class );
         NodeStore nodeStore = mock( NodeStore.class );
-        PropertyStore propertyStore = mock( PropertyStore.class );
 
-        NodeRecord nodeRecord = getNodeRecord();
-
-        when( neoStores.getCounts()).thenReturn( countsTracker );
-        when( neoStores.getNodeStore()).thenReturn( nodeStore );
-        when( neoStores.getPropertyStore() ).thenReturn( propertyStore );
-
-        when( nodeStore.newRecord() ).thenReturn( nodeRecord );
+        when( neoStores.getNodeStore() ).thenReturn( nodeStore );
 
         ProcessListenableNeoStoreIndexView
                 storeView = new ProcessListenableNeoStoreIndexView( LockService.NO_LOCK_SERVICE, neoStores );
-        MultipleIndexPopulator indexPopulator = new MultipleIndexPopulator( storeView, logProvider );
+        MultipleIndexPopulator indexPopulator =
+                new MultipleIndexPopulator( storeView, logProvider, EntityType.NODE, mock( SchemaState.class ) );
 
         storeView.setProcessListener( new NodeUpdateProcessListener( indexPopulator ) );
 
@@ -95,7 +90,7 @@ public class MultipleIndexPopulatorUpdatesTest
         addPopulator( indexPopulator, populator, 1, TestIndexDescriptorFactory.forLabel( 1, 1 ) );
 
         indexPopulator.create();
-        StoreScan<IndexPopulationFailedKernelException> storeScan = indexPopulator.indexAllNodes();
+        StoreScan<IndexPopulationFailedKernelException> storeScan = indexPopulator.indexAllEntities();
         storeScan.run();
 
         Mockito.verify( indexUpdater, never() ).process( any(IndexEntryUpdate.class) );
@@ -128,7 +123,7 @@ public class MultipleIndexPopulatorUpdatesTest
                 flippableIndexProxy, failedIndexProxyFactory, "userIndexDescription" );
     }
 
-    private static class NodeUpdateProcessListener implements Listener<NodeRecord>
+    private static class NodeUpdateProcessListener implements Listener<StorageNodeCursor>
     {
         private final MultipleIndexPopulator indexPopulator;
         private final LabelSchemaDescriptor index;
@@ -140,9 +135,9 @@ public class MultipleIndexPopulatorUpdatesTest
         }
 
         @Override
-        public void receive( NodeRecord nodeRecord )
+        public void receive( StorageNodeCursor node )
         {
-            if ( nodeRecord.getId() == 7 )
+            if ( node.entityReference() == 7 )
             {
                 indexPopulator.queueUpdate( IndexEntryUpdate.change( 8L, index, Values.of( "a" ), Values.of( "b" ) ) );
             }
@@ -151,26 +146,28 @@ public class MultipleIndexPopulatorUpdatesTest
 
     private class ProcessListenableNeoStoreIndexView extends NeoStoreIndexStoreView
     {
-        private Listener<NodeRecord> processListener;
+        private Listener<StorageNodeCursor> processListener;
+        private NeoStores neoStores;
 
         ProcessListenableNeoStoreIndexView( LockService locks, NeoStores neoStores )
         {
             super( locks, neoStores );
+            this.neoStores = neoStores;
         }
 
         @Override
         public <FAILURE extends Exception> StoreScan<FAILURE> visitNodes( int[] labelIds,
                 IntPredicate propertyKeyIdFilter,
-                Visitor<NodeUpdates,FAILURE> propertyUpdatesVisitor,
+                Visitor<EntityUpdates,FAILURE> propertyUpdatesVisitor,
                 Visitor<NodeLabelUpdate,FAILURE> labelUpdateVisitor,
                 boolean forceStoreScan )
         {
 
-            return new ListenableNodeScanViewNodeStoreScan<>( nodeStore, locks, propertyStore, labelUpdateVisitor,
+            return new ListenableNodeScanViewNodeStoreScan<>( new RecordStorageReader( neoStores ), locks, labelUpdateVisitor,
                     propertyUpdatesVisitor, labelIds, propertyKeyIdFilter, processListener );
         }
 
-        void setProcessListener( Listener<NodeRecord> processListener )
+        void setProcessListener( Listener<StorageNodeCursor> processListener )
         {
             this.processListener = processListener;
         }
@@ -178,24 +175,24 @@ public class MultipleIndexPopulatorUpdatesTest
 
     private class ListenableNodeScanViewNodeStoreScan<FAILURE extends Exception> extends StoreViewNodeStoreScan<FAILURE>
     {
-        private final Listener<NodeRecord> processListener;
+        private final Listener<StorageNodeCursor> processListener;
 
-        ListenableNodeScanViewNodeStoreScan( NodeStore nodeStore, LockService locks,
-                PropertyStore propertyStore, Visitor<NodeLabelUpdate,FAILURE> labelUpdateVisitor,
-                Visitor<NodeUpdates,FAILURE> propertyUpdatesVisitor, int[] labelIds,
-                IntPredicate propertyKeyIdFilter, Listener<NodeRecord> processListener )
+        ListenableNodeScanViewNodeStoreScan( StorageReader storageReader, LockService locks,
+                Visitor<NodeLabelUpdate,FAILURE> labelUpdateVisitor,
+                Visitor<EntityUpdates,FAILURE> propertyUpdatesVisitor, int[] labelIds,
+                IntPredicate propertyKeyIdFilter, Listener<StorageNodeCursor> processListener )
         {
-            super( nodeStore, locks, propertyStore, labelUpdateVisitor, propertyUpdatesVisitor,
+            super( storageReader, locks, labelUpdateVisitor, propertyUpdatesVisitor,
                     labelIds,
                     propertyKeyIdFilter );
             this.processListener = processListener;
         }
 
         @Override
-        public void process( NodeRecord nodeRecord ) throws FAILURE
+        public boolean process( StorageNodeCursor cursor ) throws FAILURE
         {
-            processListener.receive( nodeRecord );
-            super.process( nodeRecord );
+            processListener.receive( cursor );
+            return super.process( cursor );
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,9 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.ast.conditions
 
-import org.opencypher.v9_0.ast.conditions.containsNoMatchingNodes
-import org.opencypher.v9_0.expressions.{NamedPatternPart, ShortestPaths}
-import org.opencypher.v9_0.rewriting.Condition
+import org.neo4j.cypher.internal.v3_5.expressions.{NamedPatternPart, ShortestPaths}
+import org.neo4j.cypher.internal.v3_5.rewriting.Condition
+import org.neo4j.cypher.internal.v3_5.rewriting.conditions.containsNoMatchingNodes
 
 case object containsNamedPathOnlyForShortestPath extends Condition {
   private val matcher = containsNoMatchingNodes({

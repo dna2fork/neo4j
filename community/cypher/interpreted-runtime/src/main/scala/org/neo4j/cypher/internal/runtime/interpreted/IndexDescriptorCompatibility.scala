@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,15 +20,11 @@
 package org.neo4j.cypher.internal.runtime.interpreted
 
 import org.neo4j.cypher.internal.planner.v3_5.spi.{IndexLimitation, SlowContains, IndexDescriptor => CypherIndexDescriptor}
-import org.neo4j.internal.kernel.api.{IndexLimitation => KernelIndexLimitation}
 import org.neo4j.internal.kernel.api.schema.LabelSchemaDescriptor
+import org.neo4j.internal.kernel.api.{IndexLimitation => KernelIndexLimitation}
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory
-import org.neo4j.kernel.api.schema.index.{IndexDescriptor => KernelIndexDescriptor}
 
 trait IndexDescriptorCompatibility {
-  def kernelToCypher(index: KernelIndexDescriptor): CypherIndexDescriptor =
-    CypherIndexDescriptor(index.schema().keyId, index.schema().getPropertyIds)
-
   def kernelToCypher(limitation: KernelIndexLimitation): IndexLimitation = {
     limitation match {
       case KernelIndexLimitation.SLOW_CONTAINS => SlowContains

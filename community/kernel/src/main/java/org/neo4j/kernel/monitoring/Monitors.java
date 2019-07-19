@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -35,9 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 import org.neo4j.helpers.ArrayUtil;
-import org.neo4j.logging.Log;
-import org.neo4j.logging.LogProvider;
-import org.neo4j.logging.NullLogProvider;
 
 import static org.apache.commons.lang3.ArrayUtils.isEmpty;
 
@@ -54,37 +51,36 @@ import static org.apache.commons.lang3.ArrayUtils.isEmpty;
  */
 public class Monitors
 {
-    // Concurrency: Mutation of these data structures is always guarded by the monitor lock on this Monitors instance,
-    // while look-ups and reads are performed concurrently. The methodMonitorListeners lists (the map values) are
-    // read concurrently by the proxies, while changing the listener set always produce new lists that atomically
-    // replace the ones already in the methodMonitorListeners map.
-
     /** Monitor interface method -> Listeners */
     private final Map<Method,Set<MonitorListenerInvocationHandler>> methodMonitorListeners = new ConcurrentHashMap<>();
     private final MutableBag<Class<?>> monitoredInterfaces = MultiReaderHashBag.newBag();
-    private final Log log;
+    private final Monitors parent;
 
     public Monitors()
     {
-        this( NullLogProvider.getInstance() );
+        this( null );
     }
 
-    public Monitors( LogProvider logProvider )
+    /**
+     * Create a child monitor with a given {@code parent}. Propagation works as expected where you can subscribe to
+     * global monitors through the child monitor, but not the other way around. E.g. you can not subscribe to monitors
+     * that are registered on the child monitor through the parent monitor.
+     * <p>
+     * Events will bubble up from the children in a way that listeners on the child monitor will be invoked before the
+     * parent ones.
+     *
+     * @param parent to propagate events to and from.
+     */
+    public Monitors( Monitors parent )
     {
-        this.log = logProvider.getLog( Monitors.class );
-    }
-
-    public <T> T newMonitor( Class<T> monitorClass, Class<?> owningClass, String... tags )
-    {
-        String[] monitorTags = ArrayUtil.concat( tags, owningClass.getName() );
-        return newMonitor( monitorClass, monitorTags );
+        this.parent = parent;
     }
 
     public <T> T newMonitor( Class<T> monitorClass, String... tags )
     {
         requireInterface( monitorClass );
         ClassLoader classLoader = monitorClass.getClassLoader();
-        MonitorInvocationHandler monitorInvocationHandler = new MonitorInvocationHandler( tags );
+        MonitorInvocationHandler monitorInvocationHandler = new MonitorInvocationHandler( this, tags );
         return monitorClass.cast( Proxy.newProxyInstance( classLoader, new Class<?>[]{monitorClass}, monitorInvocationHandler ) );
     }
 
@@ -111,7 +107,7 @@ public class Monitors
 
     public boolean hasListeners( Class<?> monitorClass )
     {
-        return monitoredInterfaces.contains( monitorClass );
+        return monitoredInterfaces.contains( monitorClass ) || ((parent != null) && parent.hasListeners( monitorClass ));
     }
 
     private void cleanupMonitorListeners( Object monitorListener, Method key )
@@ -148,7 +144,6 @@ public class Monitors
     }
     private interface MonitorListenerInvocationHandler
     {
-
         Object getMonitorListener();
 
         void invoke( Object proxy, Method method, Object[] args, String... tags ) throws Throwable;
@@ -196,26 +191,36 @@ public class Monitors
         }
     }
 
-    private class MonitorInvocationHandler implements InvocationHandler
+    private static class MonitorInvocationHandler implements InvocationHandler
     {
-        private String[] tags;
+        private final Monitors monitor;
+        private final String[] tags;
 
-        MonitorInvocationHandler( String... tags )
+        MonitorInvocationHandler( Monitors monitor, String... tags )
         {
+            this.monitor = monitor;
             this.tags = tags;
         }
 
         @Override
         public Object invoke( Object proxy, Method method, Object[] args )
         {
-            invokeMonitorListeners( proxy, method, args );
+            invokeMonitorListeners( monitor, tags, proxy, method, args );
+
+            // Bubble up
+            Monitors current = monitor.parent;
+            while ( current != null )
+            {
+                invokeMonitorListeners( current, tags, proxy, method, args );
+                current = current.parent;
+            }
             return null;
         }
 
-        private void invokeMonitorListeners( Object proxy, Method method, Object[] args )
+        private static void invokeMonitorListeners( Monitors monitor, String[] tags, Object proxy, Method method, Object[] args )
         {
-            Set<MonitorListenerInvocationHandler> handlers = methodMonitorListeners.get( method );
-            if ( handlers == null )
+            Set<MonitorListenerInvocationHandler> handlers = monitor.methodMonitorListeners.get( method );
+            if ( handlers == null || handlers.isEmpty() )
             {
                 return;
             }
@@ -225,10 +230,8 @@ public class Monitors
                 {
                     monitorListenerInvocationHandler.invoke( proxy, method, args, tags );
                 }
-                catch ( Throwable e )
+                catch ( Throwable ignored )
                 {
-                    String message = String.format( "Encountered exception while handling listener for monitor method %s", method.getName() );
-                    log.warn( message, e );
                 }
             }
         }

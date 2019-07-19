@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -105,7 +105,7 @@ class KeyFormat implements CountsVisitor
      *  0 1 2 3 4 5 6 7   8 9 A B C D E F
      * [t,0,0,0,i,i,i,i ; 0,0,0,0,0,0,0,k]
      *  t - index entry marker - "{@link #INDEX}"
-     *  k - entry (sub)type - "{@link #INDEX_STATS}"
+     *  k - entry (sub)type - "{@link #INDEX_SAMPLE}"
      *  i - index id
      * </pre>
      * For value format, see {@link org.neo4j.kernel.impl.store.counts.CountsUpdater#replaceIndexSample(long , long, long)}.

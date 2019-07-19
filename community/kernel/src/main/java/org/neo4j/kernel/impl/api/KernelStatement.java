@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -43,9 +43,10 @@ import org.neo4j.kernel.api.query.ExecutingQuery;
 import org.neo4j.kernel.api.txstate.ExplicitIndexTransactionState;
 import org.neo4j.kernel.api.txstate.TransactionState;
 import org.neo4j.kernel.api.txstate.TxStateHolder;
-import org.neo4j.kernel.impl.locking.LockTracer;
+import org.neo4j.kernel.api.txstate.auxiliary.AuxiliaryTransactionState;
 import org.neo4j.kernel.impl.locking.StatementLocks;
 import org.neo4j.storageengine.api.StorageReader;
+import org.neo4j.storageengine.api.lock.LockTracer;
 
 import static java.lang.String.format;
 import static org.neo4j.util.FeatureToggles.flag;
@@ -119,6 +120,12 @@ public class KernelStatement extends CloseableResourceManager implements TxState
     public TransactionState txState()
     {
         return txStateHolder.txState();
+    }
+
+    @Override
+    public AuxiliaryTransactionState auxiliaryTxState( Object providerIdentityKey )
+    {
+        return txStateHolder.auxiliaryTxState( providerIdentityKey );
     }
 
     @Override

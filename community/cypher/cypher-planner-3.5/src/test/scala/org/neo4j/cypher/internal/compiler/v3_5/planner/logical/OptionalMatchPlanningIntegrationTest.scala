@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,12 +23,15 @@ import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSuppor
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.plans.rewriter.unnestOptional
 import org.neo4j.cypher.internal.ir.v3_5.SimplePatternLength
 import org.neo4j.cypher.internal.planner.v3_5.spi.DelegatingGraphStatistics
-import org.opencypher.v9_0.util.{Cardinality, LabelId, RelTypeId}
-import org.opencypher.v9_0.util.Foldable._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions._
-import org.neo4j.cypher.internal.v3_5.logical.plans.{Limit, _}
+import org.neo4j.cypher.internal.v3_5.logical.plans.Limit
+import org.neo4j.cypher.internal.v3_5.logical.plans._
 import org.neo4j.kernel.impl.util.dbstructure.DbStructureLargeOptionalMatchStructure
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.Foldable._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.Cardinality
+import org.neo4j.cypher.internal.v3_5.util.LabelId
+import org.neo4j.cypher.internal.v3_5.util.RelTypeId
 
 class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPlanningTestSupport2 {
 
@@ -183,7 +186,7 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
       ) =>
         args should equal(Set("r", "a1"))
         val predicate: Expression = Equals(Variable("a1") _, Variable("a2") _) _
-        predicates should equal(Seq(predicate))
+        predicates.exprs should equal(Set(predicate))
     }
   }
 
@@ -236,8 +239,7 @@ class OptionalMatchPlanningIntegrationTest extends CypherFunSuite with LogicalPl
     )
   }
 
-  test(
-    "should plan for large number of optional matches without numerical overflow in estimatedRows") {
+  test("should plan for large number of optional matches without numerical overflow in estimatedRows") {
 
     val lom: LogicalPlanningEnvironment[_] = new fromDbStructure(DbStructureLargeOptionalMatchStructure.INSTANCE)
     val query =

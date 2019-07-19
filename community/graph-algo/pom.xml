@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>3.5.0-SNAPSHOT</version>
+    <version>3.5.8-SNAPSHOT</version>
     <relativePath>../..</relativePath>
   </parent>
 
@@ -18,7 +18,7 @@
 
   <modelVersion>4.0.0</modelVersion>
   <artifactId>neo4j-graph-algo</artifactId>
-  <version>3.5.0-SNAPSHOT</version>
+  <version>3.5.8-SNAPSHOT</version>
 
   <packaging>jar</packaging>
   <name>Neo4j - Graph Algorithms</name>
@@ -52,10 +52,7 @@ the relevant Commercial Agreement.
 
   <build>
     <plugins>
-      <!-- This module contains public API, run javadoc and revapi -->
-      <plugin>
-        <artifactId>maven-javadoc-plugin</artifactId>
-      </plugin>
+      <!-- This module contains public API, run revapi -->
       <plugin>
         <groupId>org.revapi</groupId>
         <artifactId>revapi-maven-plugin</artifactId>
@@ -85,23 +82,15 @@ the relevant Commercial Agreement.
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-migrationsupport</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.maven.surefire</groupId>
-            <artifactId>surefire-logger-api</artifactId>
+            <artifactId>junit-jupiter-engine</artifactId>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
         </dependency>
-      <dependency>
-        <groupId>org.hamcrest</groupId>
-        <artifactId>hamcrest-library</artifactId>
-      </dependency>
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest-library</artifactId>
+        </dependency>
     </dependencies>
 </project>

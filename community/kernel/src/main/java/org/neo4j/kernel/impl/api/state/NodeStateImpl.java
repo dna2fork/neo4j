@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -30,13 +30,14 @@ import java.util.Iterator;
 import java.util.Set;
 
 import org.neo4j.kernel.impl.api.state.RelationshipChangesForNode.DiffStrategy;
-import org.neo4j.kernel.impl.newapi.RelationshipDirection;
+import org.neo4j.kernel.impl.util.collection.CollectionsFactory;
 import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSets;
 import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSetsImpl;
-import org.neo4j.storageengine.api.Direction;
+import org.neo4j.storageengine.api.RelationshipDirection;
 import org.neo4j.storageengine.api.StorageProperty;
 import org.neo4j.storageengine.api.txstate.LongDiffSets;
 import org.neo4j.storageengine.api.txstate.NodeState;
+import org.neo4j.values.storable.Value;
 
 import static java.util.Collections.emptyIterator;
 
@@ -69,6 +70,12 @@ class NodeStateImpl extends PropertyContainerStateImpl implements NodeState
         }
 
         @Override
+        public boolean hasPropertyChanges()
+        {
+            return false;
+        }
+
+        @Override
         public LongDiffSets labelDiffSets()
         {
             return LongDiffSets.EMPTY;
@@ -87,33 +94,15 @@ class NodeStateImpl extends PropertyContainerStateImpl implements NodeState
         }
 
         @Override
-        public boolean hasPropertyChanges()
-        {
-            return false;
-        }
-
-        @Override
-        public StorageProperty getChangedProperty( int propertyKeyId )
-        {
-            return null;
-        }
-
-        @Override
-        public StorageProperty getAddedProperty( int propertyKeyId )
-        {
-            return null;
-        }
-
-        @Override
         public boolean isPropertyChangedOrRemoved( int propertyKey )
         {
             return false;
         }
 
         @Override
-        public boolean isPropertyRemoved( int propertyKeyId )
+        public Value propertyValue( int propertyKey )
         {
-            return false;
+            return null;
         }
 
         @Override
@@ -135,9 +124,9 @@ class NodeStateImpl extends PropertyContainerStateImpl implements NodeState
 
     private Set<MutableLongDiffSets> indexDiffs;
 
-    NodeStateImpl( long id )
+    NodeStateImpl( long id, CollectionsFactory collectionsFactory )
     {
-        super( id );
+        super( id, collectionsFactory );
     }
 
     @Override
@@ -150,12 +139,12 @@ class NodeStateImpl extends PropertyContainerStateImpl implements NodeState
     {
         if ( labelDiffSets == null )
         {
-            labelDiffSets = new MutableLongDiffSetsImpl();
+            labelDiffSets = new MutableLongDiffSetsImpl( collectionsFactory );
         }
         return labelDiffSets;
     }
 
-    public void addRelationship( long relId, int typeId, Direction direction )
+    public void addRelationship( long relId, int typeId, RelationshipDirection direction )
     {
         if ( !hasAddedRelationships() )
         {
@@ -164,7 +153,7 @@ class NodeStateImpl extends PropertyContainerStateImpl implements NodeState
         relationshipsAdded.addRelationship( relId, typeId, direction );
     }
 
-    public void removeRelationship( long relId, int typeId, Direction direction )
+    public void removeRelationship( long relId, int typeId, RelationshipDirection direction )
     {
         if ( hasAddedRelationships() )
         {

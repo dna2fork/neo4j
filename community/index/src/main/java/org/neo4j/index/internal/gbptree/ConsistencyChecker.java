@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,6 +27,7 @@ import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 
+import org.neo4j.index.internal.gbptree.GenerationSafePointerPair.GenerationTarget;
 import org.neo4j.io.pagecache.CursorException;
 import org.neo4j.io.pagecache.PageCursor;
 
@@ -49,17 +50,16 @@ import static org.neo4j.index.internal.gbptree.TreeNode.Type.LEAF;
 class ConsistencyChecker<KEY>
 {
     private final TreeNode<KEY,?> node;
-    private final KEY readKey;
     private final Comparator<KEY> comparator;
     private final Layout<KEY,?> layout;
     private final List<RightmostInChain> rightmostPerLevel = new ArrayList<>();
     private final long stableGeneration;
     private final long unstableGeneration;
+    private final GenerationKeeper generationTarget = new GenerationKeeper();
 
     ConsistencyChecker( TreeNode<KEY,?> node, Layout<KEY,?> layout, long stableGeneration, long unstableGeneration )
     {
         this.node = node;
-        this.readKey = layout.newKey();
         this.comparator = node.keyComparator();
         this.layout = layout;
         this.stableGeneration = stableGeneration;
@@ -252,16 +252,16 @@ class ConsistencyChecker<KEY>
                     cursor, stableGeneration, unstableGeneration, "Successor", TreeNode.BYTE_POS_SUCCESSOR );
 
             // for assertSiblings
-            leftSiblingPointer = TreeNode.leftSibling( cursor, stableGeneration, unstableGeneration );
-            rightSiblingPointer = TreeNode.rightSibling( cursor, stableGeneration, unstableGeneration );
-            leftSiblingPointerGeneration = node.pointerGeneration( cursor, leftSiblingPointer );
-            rightSiblingPointerGeneration = node.pointerGeneration( cursor, rightSiblingPointer );
+            leftSiblingPointer = TreeNode.leftSibling( cursor, stableGeneration, unstableGeneration, generationTarget );
+            leftSiblingPointerGeneration = generationTarget.generation;
+            rightSiblingPointer = TreeNode.rightSibling( cursor, stableGeneration, unstableGeneration, generationTarget );
+            rightSiblingPointerGeneration = generationTarget.generation;
             leftSiblingPointer = pointer( leftSiblingPointer );
             rightSiblingPointer = pointer( rightSiblingPointer );
             currentNodeGeneration = TreeNode.generation( cursor );
 
-            successor = TreeNode.successor( cursor, stableGeneration, unstableGeneration );
-            successorGeneration = node.pointerGeneration( cursor, successor );
+            successor = TreeNode.successor( cursor, stableGeneration, unstableGeneration, generationTarget );
+            successorGeneration = generationTarget.generation;
 
             keyCount = TreeNode.keyCount( cursor );
             if ( !node.reasonableKeyCount( keyCount ) )
@@ -286,6 +286,14 @@ class ConsistencyChecker<KEY>
             assertKeyOrder( cursor, range, keyCount, isLeaf ? LEAF : INTERNAL );
         }
         while ( cursor.shouldRetry() );
+        checkAfterShouldRetry( cursor );
+
+        do
+        {
+            node.checkMetaConsistency( cursor, keyCount, isLeaf ? LEAF : INTERNAL );
+        }
+        while ( cursor.shouldRetry() );
+        checkAfterShouldRetry( cursor );
 
         assertPointerGenerationMatchesGeneration( cursor, currentNodeGeneration, expectedGeneration );
         assertSiblings( cursor, currentNodeGeneration, leftSiblingPointer, leftSiblingPointerGeneration, rightSiblingPointer,
@@ -302,8 +310,11 @@ class ConsistencyChecker<KEY>
     private static void assertPointerGenerationMatchesGeneration( PageCursor cursor, long nodeGeneration,
             long expectedGeneration )
     {
-        assert nodeGeneration <= expectedGeneration : "Expected node:" + cursor.getCurrentPageId() + " generation:" + nodeGeneration +
-                " to be ≤ pointer generation:" + expectedGeneration;
+        if ( nodeGeneration > expectedGeneration )
+        {
+            throw new TreeInconsistencyException( "Expected node:%d generation:%d to be ≤ pointer generation:%d", cursor.getCurrentPageId(), nodeGeneration,
+                    expectedGeneration );
+        }
     }
 
     private void checkSuccessorPointerGeneration( PageCursor cursor, long successor, long successorGeneration )
@@ -323,6 +334,7 @@ class ConsistencyChecker<KEY>
                     nodeGeneration = TreeNode.generation( cursor );
                 }
                 while ( cursor.shouldRetry() );
+                checkAfterShouldRetry( cursor );
 
                 assertPointerGenerationMatchesGeneration( cursor, nodeGeneration, successorGeneration );
             }
@@ -354,6 +366,7 @@ class ConsistencyChecker<KEY>
         long pageId = cursor.getCurrentPageId();
         KEY prev = null;
         KeyRange<KEY> childRange;
+        KEY readKey = layout.newKey();
 
         // Check children, all except the last one
         int pos = 0;
@@ -363,8 +376,8 @@ class ConsistencyChecker<KEY>
             long childGeneration;
             do
             {
-                child = childAt( cursor, pos );
-                childGeneration = node.pointerGeneration( cursor, child );
+                child = childAt( cursor, pos, generationTarget );
+                childGeneration = generationTarget.generation;
                 node.keyAt( cursor, readKey, pos, INTERNAL );
             }
             while ( cursor.shouldRetry() );
@@ -394,14 +407,8 @@ class ConsistencyChecker<KEY>
         long childGeneration;
         do
         {
-            child = childAt( cursor, pos );
-        }
-        while ( cursor.shouldRetry() );
-        checkAfterShouldRetry( cursor );
-
-        do
-        {
-            childGeneration = node.pointerGeneration( cursor, child );
+            child = childAt( cursor, pos, generationTarget );
+            childGeneration = generationTarget.generation;
         }
         while ( cursor.shouldRetry() );
         checkAfterShouldRetry( cursor );
@@ -418,16 +425,17 @@ class ConsistencyChecker<KEY>
         cursor.checkAndClearCursorException();
     }
 
-    private long childAt( PageCursor cursor, int pos )
+    private long childAt( PageCursor cursor, int pos, GenerationTarget childGeneration )
     {
         assertNoCrashOrBrokenPointerInGSPP(
                 cursor, stableGeneration, unstableGeneration, "Child", node.childOffset( pos ) );
-        return node.childAt( cursor, pos, stableGeneration, unstableGeneration );
+        return node.childAt( cursor, pos, stableGeneration, unstableGeneration, childGeneration );
     }
 
     private void assertKeyOrder( PageCursor cursor, KeyRange<KEY> range, int keyCount, TreeNode.Type type )
     {
         KEY prev = layout.newKey();
+        KEY readKey = layout.newKey();
         boolean first = true;
         for ( int pos = 0; pos < keyCount; pos++ )
         {
@@ -442,7 +450,7 @@ class ConsistencyChecker<KEY>
             {
                 if ( comparator.compare( prev, readKey ) >= 0 )
                 {
-                    cursor.setCursorException( "Non-unique key " + readKey );
+                    cursor.setCursorException( format( "Non-unique key, id=%d, key=%s ", cursor.getCurrentPageId(), readKey ) );
                 }
             }
             else

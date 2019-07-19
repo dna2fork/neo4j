@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -22,19 +22,25 @@ package org.neo4j.cypher.internal.runtime.interpreted.pipes
 import org.neo4j.cypher.internal.runtime.QueryContext
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Expression
-import org.opencypher.v9_0.util.attribution.Id
-import org.opencypher.v9_0.expressions.{LabelToken, PropertyKeyToken}
 import org.neo4j.cypher.internal.v3_5.logical.plans._
 import org.neo4j.internal.kernel.api.IndexReference
+import org.neo4j.cypher.internal.v3_5.expressions.LabelToken
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
 
 case class NodeIndexSeekPipe(ident: String,
                              label: LabelToken,
-                             propertyKeys: Seq[PropertyKeyToken],
+                             properties: Array[IndexedProperty],
                              valueExpr: QueryExpression[Expression],
-                             indexMode: IndexSeekMode = IndexSeek)
-                            (val id: Id = Id.INVALID_ID) extends Pipe with NodeIndexSeeker {
+                             indexMode: IndexSeekMode = IndexSeek,
+                             indexOrder: IndexOrder)
+                            (val id: Id = Id.INVALID_ID) extends Pipe with NodeIndexSeeker with IndexPipeWithValues {
 
-  override val propertyIds: Array[Int] = propertyKeys.map(_.nameId.id).toArray
+  override val propertyIds: Array[Int] = properties.map(_.propertyKeyToken.nameId.id)
+
+  override val indexPropertyIndices: Array[Int] = properties.indices.filter(properties(_).shouldGetValue).toArray
+  override val indexCachedNodeProperties: Array[CachedNodeProperty] =
+    indexPropertyIndices.map(offset => properties(offset).asCachedNodeProperty(ident))
+  private val needsValues: Boolean = indexPropertyIndices.nonEmpty
 
   private var reference: IndexReference = IndexReference.NO_INDEX
 
@@ -49,8 +55,28 @@ case class NodeIndexSeekPipe(ident: String,
 
   protected def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
     val indexReference = reference(state.query)
-    val baseContext = state.createOrGetInitialContext(executionContextFactory)
-    val resultNodes = indexSeek(state, indexReference, baseContext)
-    resultNodes.map(node => executionContextFactory.copyWith(baseContext, ident, node))
+    val baseContext = state.newExecutionContext(executionContextFactory)
+
+    indexSeek(state, indexReference, needsValues, indexOrder, baseContext).flatMap(
+      cursor => new IndexIterator(state.query, baseContext, cursor)
+    )
+  }
+
+  def canEqual(other: Any): Boolean = other.isInstanceOf[NodeIndexSeekPipe]
+
+  override def equals(other: Any): Boolean = other match {
+    case that: NodeIndexSeekPipe =>
+      (that canEqual this) &&
+        ident == that.ident &&
+        label == that.label &&
+        (properties sameElements that.properties) &&
+        valueExpr == that.valueExpr &&
+        indexMode == that.indexMode
+    case _ => false
+  }
+
+  override def hashCode(): Int = {
+    val state = Seq(ident, label, properties.toSeq, valueExpr, indexMode)
+    state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
   }
 }

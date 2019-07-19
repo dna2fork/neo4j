@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.neo4j</groupId>
     <artifactId>parent</artifactId>
-    <version>3.5.0-SNAPSHOT</version>
+    <version>3.5.8-SNAPSHOT</version>
     <relativePath>../..</relativePath>
   </parent>
 
@@ -15,10 +15,10 @@
 
   <modelVersion>4.0.0</modelVersion>
   <artifactId>neo4j-slf4j</artifactId>
-  <version>3.5.0-SNAPSHOT</version>
+  <version>3.5.8-SNAPSHOT</version>
 
   <packaging>jar</packaging>
-  <name>SLF4J Neo4j Binding</name>
+  <name>Neo4j - SLF4J Neo4j Binding</name>
   <description>SLF4J binding for Neo4j Logging.</description>
   <url>http://components.neo4j.org/${project.artifactId}/${project.version}</url>
 
@@ -49,10 +49,7 @@ the relevant Commercial Agreement.
 
   <build>
     <plugins>
-      <!-- This module contains public API, run javadoc and revapi -->
-      <plugin>
-        <artifactId>maven-javadoc-plugin</artifactId>
-      </plugin>
+      <!-- This module contains public API, run revapi -->
       <plugin>
         <groupId>org.revapi</groupId>
         <artifactId>revapi-maven-plugin</artifactId>
@@ -83,19 +80,7 @@ the relevant Commercial Agreement.
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-migrationsupport</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.maven.surefire</groupId>
-            <artifactId>surefire-logger-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.hamcrest</groupId>
-            <artifactId>hamcrest-core</artifactId>
+            <artifactId>junit-jupiter-engine</artifactId>
         </dependency>
         <dependency>
             <groupId>org.hamcrest</groupId>

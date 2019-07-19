@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -44,13 +44,20 @@ public interface SchemaWrite
      * Create index from schema descriptor
      *
      * @param descriptor description of the index
+     * @param name name of the index
+     * @return the newly created index
+     */
+    IndexReference indexCreate( SchemaDescriptor descriptor, Optional<String> name ) throws SchemaKernelException;
+
+    /**
+     * Create index from schema descriptor
+     *
+     * @param descriptor description of the index
      * @param provider name of the desired index provider implementation
      * @param name name of the index
      * @return the newly created index
      */
-    IndexReference indexCreate( SchemaDescriptor descriptor,
-                                Optional<String> provider,
-                                Optional<String> name ) throws SchemaKernelException;
+    IndexReference indexCreate( SchemaDescriptor descriptor, String provider, Optional<String> name ) throws SchemaKernelException;
 
     /**
      * Drop the given index
@@ -72,8 +79,7 @@ public interface SchemaWrite
      * @param descriptor description of the constraint
      * @param provider name of the desired index provider implementation
      */
-    ConstraintDescriptor uniquePropertyConstraintCreate( SchemaDescriptor descriptor,
-            Optional<String> provider ) throws SchemaKernelException;
+    ConstraintDescriptor uniquePropertyConstraintCreate( SchemaDescriptor descriptor, String provider ) throws SchemaKernelException;
 
     /**
      * Create node key constraint
@@ -88,8 +94,7 @@ public interface SchemaWrite
      * @param descriptor description of the constraint
      * @param provider name of the desired index provider implementation
      */
-    ConstraintDescriptor nodeKeyConstraintCreate( LabelSchemaDescriptor descriptor,
-            Optional<String> provider ) throws SchemaKernelException;
+    ConstraintDescriptor nodeKeyConstraintCreate( LabelSchemaDescriptor descriptor, String provider ) throws SchemaKernelException;
 
     /**
      * Create node property existence constraint

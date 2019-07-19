@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import org.neo4j.unsafe.impl.batchimport.Configuration;
 import org.neo4j.unsafe.impl.batchimport.executor.DynamicTaskExecutor;
 import org.neo4j.unsafe.impl.batchimport.executor.TaskExecutor;
 import org.neo4j.unsafe.impl.batchimport.stats.StatsProvider;
+import org.neo4j.util.VisibleForTesting;
 import org.neo4j.util.concurrent.AsyncApply;
 
 import static java.lang.System.currentTimeMillis;
@@ -37,9 +38,6 @@ import static java.lang.System.nanoTime;
  * Subclasses implement {@link #process(Object, BatchSender)} receiving the batch to process
  * and an {@link BatchSender} for sending the modified batch, or other batches downstream.
  *
- * There's an overlap of functionality in {@link TicketedProcessing}, however the fit isn't perfect
- * for using it as the engine in a {@link ProcessorStep} because the queuing of processed results
- * works a bit differently. Perhaps sometimes this can be addressed.
  */
 public abstract class ProcessorStep<T> extends AbstractStep<T>
 {
@@ -203,6 +201,12 @@ public abstract class ProcessorStep<T> extends AbstractStep<T>
 
     protected void lastCallForEmittingOutstandingBatches( BatchSender sender )
     {   // Nothing to emit, subclasses might have though
+    }
+
+    @VisibleForTesting
+    public int getMaxProcessors()
+    {
+        return maxProcessors;
     }
 
     private class Sender implements BatchSender

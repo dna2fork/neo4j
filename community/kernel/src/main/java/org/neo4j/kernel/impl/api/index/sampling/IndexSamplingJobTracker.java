@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.neo4j.scheduler.Group;
 import org.neo4j.scheduler.JobScheduler;
 
 public class IndexSamplingJobTracker
@@ -76,7 +77,7 @@ public class IndexSamplingJobTracker
             }
 
             executingJobs.add( indexId );
-            jobScheduler.schedule( JobScheduler.Groups.indexSampling, () ->
+            jobScheduler.schedule( Group.INDEX_SAMPLING, () ->
             {
                 try
                 {

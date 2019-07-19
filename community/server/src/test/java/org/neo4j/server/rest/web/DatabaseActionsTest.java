@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -302,9 +302,7 @@ public class DatabaseActionsTest
         try ( Transaction tx = database.getGraph().beginTx() )
         {
             Node node = database.getGraph().getNodeById( nodeId );
-            assertEquals( false, node.getPropertyKeys()
-                    .iterator()
-                    .hasNext() );
+            assertFalse( node.getPropertyKeys().iterator().hasNext() );
             tx.success();
         }
     }
@@ -390,7 +388,7 @@ public class DatabaseActionsTest
         {
             Node node = database.getGraph().getNodeById( nodeId );
             assertEquals( 15, node.getProperty( "number" ) );
-            assertEquals( false, node.hasProperty( "foo" ) );
+            assertFalse( node.hasProperty( "foo" ) );
             tx.success();
         }
     }

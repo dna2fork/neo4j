@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,13 +24,13 @@ import org.hamcrest.Matcher;
 import org.junit.Test;
 
 import org.neo4j.collection.PrimitiveLongCollections;
-import org.neo4j.kernel.impl.newapi.RelationshipDirection;
+import org.neo4j.storageengine.api.RelationshipDirection;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
-import static org.neo4j.storageengine.api.Direction.BOTH;
-import static org.neo4j.storageengine.api.Direction.INCOMING;
-import static org.neo4j.storageengine.api.Direction.OUTGOING;
+import static org.neo4j.storageengine.api.RelationshipDirection.INCOMING;
+import static org.neo4j.storageengine.api.RelationshipDirection.LOOP;
+import static org.neo4j.storageengine.api.RelationshipDirection.OUTGOING;
 
 public class RelationshipChangesForNodeTest
 {
@@ -46,9 +46,9 @@ public class RelationshipChangesForNodeTest
         changes.addRelationship( 1, TYPE, INCOMING );
         changes.addRelationship( 2, TYPE, OUTGOING );
         changes.addRelationship( 3, TYPE, OUTGOING );
-        changes.addRelationship( 4, TYPE, BOTH );
-        changes.addRelationship( 5, TYPE, BOTH );
-        changes.addRelationship( 6, TYPE, BOTH );
+        changes.addRelationship( 4, TYPE, LOOP );
+        changes.addRelationship( 5, TYPE, LOOP );
+        changes.addRelationship( 6, TYPE, LOOP );
 
         LongIterator rawRelationships = changes.getRelationships();
         assertThat( PrimitiveLongCollections.asArray( rawRelationships ), ids( 1, 2, 3, 4, 5, 6 ) );
@@ -66,13 +66,13 @@ public class RelationshipChangesForNodeTest
         changes.addRelationship( 1, TYPE, INCOMING );
         changes.addRelationship( 2, TYPE, OUTGOING );
         changes.addRelationship( 3, TYPE, OUTGOING );
-        changes.addRelationship( 4, TYPE, BOTH );
-        changes.addRelationship( 5, TYPE, BOTH );
-        changes.addRelationship( 6, TYPE, BOTH );
+        changes.addRelationship( 4, TYPE, LOOP );
+        changes.addRelationship( 5, TYPE, LOOP );
+        changes.addRelationship( 6, TYPE, LOOP );
 
         changes.addRelationship( 10, DECOY_TYPE, INCOMING );
         changes.addRelationship( 11, DECOY_TYPE, OUTGOING );
-        changes.addRelationship( 12, DECOY_TYPE, BOTH );
+        changes.addRelationship( 12, DECOY_TYPE, LOOP );
 
         LongIterator rawIncoming =
                 changes.getRelationships( RelationshipDirection.INCOMING, TYPE );

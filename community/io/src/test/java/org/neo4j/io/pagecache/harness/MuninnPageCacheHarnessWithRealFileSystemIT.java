@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,20 +19,11 @@
  */
 package org.neo4j.io.pagecache.harness;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.pagecache.impl.muninn.MuninnPageCache;
-import org.neo4j.test.extension.Inject;
-import org.neo4j.test.extension.TestDirectoryExtension;
-import org.neo4j.test.rule.TestDirectory;
 
-@ExtendWith( TestDirectoryExtension.class )
 class MuninnPageCacheHarnessWithRealFileSystemIT extends MuninnPageCacheHarnessTest
 {
-    @Inject
-    TestDirectory directory;
-
     @Override
     protected Fixture<MuninnPageCache> createFixture()
     {

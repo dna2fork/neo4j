@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,9 +20,9 @@
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
-import org.opencypher.v9_0.util.InternalException
-import org.opencypher.v9_0.util.attribution.Id
-import org.opencypher.v9_0.expressions.SemanticDirection
+import org.neo4j.cypher.internal.v3_5.util.InternalException
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
+import org.neo4j.cypher.internal.v3_5.expressions.SemanticDirection
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable.Values
 import org.neo4j.values.virtual.{RelationshipValue, NodeValue}
@@ -48,7 +48,7 @@ case class ExpandAllPipe(source: Pipe,
 
           case Values.NO_VALUE => None
 
-          case value => throw new InternalException(s"Expected to find a node at $fromName but found $value instead")
+          case value => throw new InternalException(s"Expected to find a node at '$fromName' but found $value instead")
         }
     }
   }
@@ -56,5 +56,5 @@ case class ExpandAllPipe(source: Pipe,
   def typeNames = types.names
 
   def getFromNode(row: ExecutionContext): AnyValue =
-    row.getOrElse(fromName, throw new InternalException(s"Expected to find a node at $fromName but found nothing"))
+    row.getOrElse(fromName, throw new InternalException(s"Expected to find a node at '$fromName' but found nothing"))
 }

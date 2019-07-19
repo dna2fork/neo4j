@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -28,10 +28,14 @@ import org.junit.runners.model.Statement;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
+import java.util.Random;
 
 import org.neo4j.io.fs.DefaultFileSystemAbstraction;
 import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.io.layout.DatabaseLayout;
+import org.neo4j.io.layout.StoreLayout;
 import org.neo4j.util.VisibleForTesting;
 
 import static java.lang.String.format;
@@ -48,7 +52,7 @@ import static java.lang.String.format;
  *     @Test
  *     public void shouldDoSomething()
  *     {
- *       File storeDir = dir.graphDbDir();
+ *       File storeDir = dir.databaseDir();
  *       // do stuff with store dir
  *     }
  *   }
@@ -56,13 +60,26 @@ import static java.lang.String.format;
  */
 public class TestDirectory extends ExternalResource
 {
-    public static final String DATABASE_DIRECTORY = "graph-db";
+    private static final String DEFAULT_DATABASE_DIRECTORY = "graph.db";
+    /**
+     * This value is mixed into the hash string, along with the test name,
+     * that we use for uniquely naming test directories.
+     * By getting a new value here, every time the JVM is started, we the same
+     * tests will get different directory names when executed many times in
+     * different JVMs.
+     * This way, the test results for many runs of the same tests are kept
+     * around, so they can easily be compared with each other. This is useful
+     * when you need to investigate a flaky test, for instance.
+     */
+    private static final long JVM_EXECUTION_HASH = new Random().nextLong();
 
     private final FileSystemAbstraction fileSystem;
     private File testClassBaseFolder;
     private Class<?> owningTest;
     private boolean keepDirectoryAfterSuccessfulTest;
     private File testDirectory;
+    private StoreLayout storeLayout;
+    private DatabaseLayout defaultDatabaseLayout;
 
     private TestDirectory( FileSystemAbstraction fileSystem )
     {
@@ -146,10 +163,7 @@ public class TestDirectory extends ExternalResource
     public File directory( String name )
     {
         File dir = new File( directory(), name );
-        if ( !fileSystem.fileExists( dir ) )
-        {
-            fileSystem.mkdir( dir );
-        }
+        createDirectory( dir );
         return dir;
     }
 
@@ -158,14 +172,63 @@ public class TestDirectory extends ExternalResource
         return new File( directory(), name );
     }
 
-    public File graphDbDir()
+    public File createFile( String name )
     {
-        return directory( DATABASE_DIRECTORY );
+        File file = file( name );
+        ensureFileExists( file );
+        return file;
     }
 
-    public File makeGraphDbDir() throws IOException
+    public File databaseDir()
     {
-        return cleanDirectory( DATABASE_DIRECTORY );
+        return databaseLayout().databaseDirectory();
+    }
+
+    public StoreLayout storeLayout()
+    {
+        return storeLayout;
+    }
+
+    public DatabaseLayout databaseLayout()
+    {
+        createDirectory( defaultDatabaseLayout.databaseDirectory() );
+        return defaultDatabaseLayout;
+    }
+
+    public DatabaseLayout databaseLayout( File storeDir )
+    {
+        DatabaseLayout databaseLayout = StoreLayout.of( storeDir ).databaseLayout( DEFAULT_DATABASE_DIRECTORY );
+        createDirectory( databaseLayout.databaseDirectory() );
+        return databaseLayout;
+    }
+
+    public DatabaseLayout databaseLayout( String name )
+    {
+        DatabaseLayout databaseLayout = storeLayout.databaseLayout( name );
+        createDirectory( databaseLayout.databaseDirectory() );
+        return databaseLayout;
+    }
+
+    public File storeDir()
+    {
+        return storeLayout.storeDirectory();
+    }
+
+    public File storeDir( String storeDirName )
+    {
+        return directory( storeDirName );
+    }
+
+    public File databaseDir( File storeDirectory )
+    {
+        File databaseDirectory = databaseLayout( storeDirectory ).databaseDirectory();
+        createDirectory( databaseDirectory );
+        return databaseDirectory;
+    }
+
+    public File databaseDir( String customStoreDirectoryName )
+    {
+        return databaseDir( storeDir( customStoreDirectoryName ) );
     }
 
     public void cleanup() throws IOException
@@ -177,7 +240,7 @@ public class TestDirectory extends ExternalResource
     public String toString()
     {
         String testDirectoryName = testDirectory == null ? "<uninitialized>" : testDirectory.toString();
-        return format( "%s[%s]", getClass().getSimpleName(), testDirectoryName );
+        return format( "%s[\"%s\"]", getClass().getSimpleName(), testDirectoryName );
     }
 
     public File cleanDirectory( String name ) throws IOException
@@ -194,6 +257,8 @@ public class TestDirectory extends ExternalResource
                 fileSystem.deleteRecursively( testDirectory );
             }
             testDirectory = null;
+            storeLayout = null;
+            defaultDatabaseLayout = null;
         }
         finally
         {
@@ -212,11 +277,13 @@ public class TestDirectory extends ExternalResource
             test = "static";
         }
         testDirectory = prepareDirectoryForTest( test );
+        storeLayout = StoreLayout.of( testDirectory );
+        defaultDatabaseLayout = storeLayout.databaseLayout( DEFAULT_DATABASE_DIRECTORY );
     }
 
     public File prepareDirectoryForTest( String test ) throws IOException
     {
-        String dir = DigestUtils.md5Hex( test );
+        String dir = DigestUtils.md5Hex( JVM_EXECUTION_HASH + test );
         evaluateClassBaseTestFolder();
         register( test, dir );
         return cleanDirectory( dir );
@@ -231,6 +298,33 @@ public class TestDirectory extends ExternalResource
     private void directoryForDescription( Description description ) throws IOException
     {
         prepareDirectory( description.getTestClass(), description.getMethodName() );
+    }
+
+    private void ensureFileExists( File file )
+    {
+        try
+        {
+            if ( !fileSystem.fileExists( file ) )
+            {
+                fileSystem.create( file ).close();
+            }
+        }
+        catch ( IOException e )
+        {
+            throw new UncheckedIOException( "Failed to create file: " + file, e );
+        }
+    }
+
+    private void createDirectory( File databaseDirectory )
+    {
+        try
+        {
+            fileSystem.mkdirs( databaseDirectory );
+        }
+        catch ( IOException e )
+        {
+            throw new UncheckedIOException( "Failed to create directory: " + databaseDirectory, e );
+        }
     }
 
     private static File clean( FileSystemAbstraction fs, File dir ) throws IOException
@@ -254,7 +348,7 @@ public class TestDirectory extends ExternalResource
 
     private static File testDataDirectoryOf( Class<?> owningTest )
     {
-        File testData = new File( locateTarget( owningTest ), "test-data" );
+        File testData = new File( locateTarget( owningTest ), "test data" );
         return new File( testData, shorten( owningTest.getName() ) ).getAbsoluteFile();
     }
 
@@ -278,7 +372,7 @@ public class TestDirectory extends ExternalResource
         try ( PrintStream printStream =
                     new PrintStream( fileSystem.openAsOutputStream( new File( ensureBase(), ".register" ), true ) ) )
         {
-            printStream.println( format( "%s=%s\n", dir, test ) );
+            printStream.print( format( "%s = %s%n", dir, test ) );
         }
         catch ( IOException e )
         {

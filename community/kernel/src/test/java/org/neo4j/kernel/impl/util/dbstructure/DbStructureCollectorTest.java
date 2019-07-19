@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.junit.Test;
 
 import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.helpers.collection.Pair;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
 
 import static java.util.Arrays.asList;
@@ -61,8 +61,7 @@ public class DbStructureCollectorTest
         assertEquals( asList( of( 1, "name" ), of( 2, "income" ) ), Iterators.asList( lookup.properties() ) );
         assertEquals( asList( of( 1, "LIVES_IN" ), of( 2, "FRIEND" ) ), Iterators.asList( lookup.relationshipTypes() ) );
 
-        assertEquals( asList( "Person" ),
-                Iterators.asList( Iterators.map( Pair::first, lookup.knownUniqueIndices() ) ) );
+        assertArrayEquals( new String[] { "Person" }, lookup.knownUniqueIndices().next().first() );
         assertArrayEquals( new String[]{"name"}, lookup.knownUniqueIndices().next().other() );
 
         assertEquals( asList( "City" ),
@@ -73,15 +72,15 @@ public class DbStructureCollectorTest
                 Iterators.asList( Iterators.map( Pair::first, lookup.knownUniqueConstraints() ) ) );
         assertArrayEquals( new String[]{"name"}, lookup.knownUniqueConstraints().next().other() );
 
-        assertEquals( asList( "City" ), Iterators.asList( Iterators.map( Pair::first, lookup.knownIndices() ) ) );
+        assertEquals( new String[] { "City" }, lookup.knownIndices().next().first() );
         assertArrayEquals( new String[]{"income"}, lookup.knownIndices().next().other() );
 
         assertEquals( 50, lookup.nodesAllCardinality() );
         assertEquals( 20, lookup.nodesWithLabelCardinality( 1 ) );
         assertEquals( 30, lookup.nodesWithLabelCardinality( 2 ) );
         assertEquals( 500, lookup.cardinalityByLabelsAndRelationshipType( 1, 2, -1 ) );
-        assertEquals( 1.0d, lookup.indexSelectivity( 1, 1 ), 0.01d );
-        assertEquals( 0.2d, lookup.indexSelectivity( 2, 2 ), 0.01d );
+        assertEquals( 1.0d, lookup.indexUniqueValueSelectivity( 1, 1 ), 0.01d );
+        assertEquals( 0.2d, lookup.indexUniqueValueSelectivity( 2, 2 ), 0.01d );
     }
 
     @Test
@@ -117,20 +116,19 @@ public class DbStructureCollectorTest
         assertEquals( asList( of( 1, "LIVES_IN" ), of( 2, "FRIEND" ) ),
                 Iterators.asList( lookup.relationshipTypes() ) );
 
-        assertEquals( asList( "Person" ),
-                Iterators.asList( Iterators.map( Pair::first, lookup.knownUniqueIndices() ) ) );
+        assertArrayEquals( new String[] { "Person" }, lookup.knownUniqueIndices().next().first() );
         assertArrayEquals( new String[]{"name", "lastName"}, lookup.knownUniqueIndices().next().other() );
         assertEquals( asList( "City" ),
                 Iterators.asList( Iterators.map( Pair::first, lookup.knownUniqueConstraints() ) ) );
         assertArrayEquals( new String[]{"name", "area"}, lookup.knownUniqueConstraints().next().other() );
-        assertEquals( asList( "City" ), Iterators.asList( Iterators.map( Pair::first, lookup.knownIndices() ) ) );
+        assertEquals( new String[] { "City" }, lookup.knownIndices().next().first() );
         assertArrayEquals( new String[]{"income", "tax"}, lookup.knownIndices().next().other() );
 
         assertEquals( 50, lookup.nodesAllCardinality() );
         assertEquals( 20, lookup.nodesWithLabelCardinality( 1 ) );
         assertEquals( 30, lookup.nodesWithLabelCardinality( 2 ) );
         assertEquals( 500, lookup.cardinalityByLabelsAndRelationshipType( 1, 2, -1 ) );
-        assertEquals( 1.0d, lookup.indexSelectivity( 1, 1, 3 ), 0.01d );
-        assertEquals( 0.2d, lookup.indexSelectivity( 2, 2, 4 ), 0.01d );
+        assertEquals( 1.0d, lookup.indexUniqueValueSelectivity( 1, 1, 3 ), 0.01d );
+        assertEquals( 0.2d, lookup.indexUniqueValueSelectivity( 2, 2, 4 ), 0.01d );
     }
 }

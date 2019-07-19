@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,15 +19,23 @@
  */
 package org.neo4j.cypher.operations;
 
-import org.opencypher.v9_0.util.CypherTypeException;
+import org.neo4j.cypher.internal.v3_5.util.CypherTypeException;
+import org.neo4j.cypher.internal.v3_5.util.InternalException;
+import org.neo4j.cypher.internal.v3_5.util.InvalidSemanticsException;
+
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import org.neo4j.values.AnyValue;
+import org.neo4j.values.AnyValues;
+import org.neo4j.values.Comparison;
 import org.neo4j.values.SequenceValue;
 import org.neo4j.values.ValueMapper;
 import org.neo4j.values.storable.BooleanValue;
 import org.neo4j.values.storable.DateTimeValue;
 import org.neo4j.values.storable.DateValue;
 import org.neo4j.values.storable.DurationValue;
+import org.neo4j.values.storable.FloatingPointValue;
 import org.neo4j.values.storable.LocalDateTimeValue;
 import org.neo4j.values.storable.LocalTimeValue;
 import org.neo4j.values.storable.NumberValue;
@@ -35,13 +43,14 @@ import org.neo4j.values.storable.PointValue;
 import org.neo4j.values.storable.TextValue;
 import org.neo4j.values.storable.TimeValue;
 import org.neo4j.values.storable.Value;
-import org.neo4j.values.storable.Values;
 import org.neo4j.values.virtual.MapValue;
 import org.neo4j.values.virtual.PathValue;
 import org.neo4j.values.virtual.VirtualNodeValue;
 import org.neo4j.values.virtual.VirtualRelationshipValue;
 
+import static org.neo4j.values.storable.Values.FALSE;
 import static org.neo4j.values.storable.Values.NO_VALUE;
+import static org.neo4j.values.storable.Values.TRUE;
 
 /**
  * This class contains static helper boolean methods used by the compiled expressions
@@ -56,185 +65,424 @@ public final class CypherBoolean
         throw new UnsupportedOperationException( "Do not instantiate" );
     }
 
-    public static Value or( AnyValue... args )
-    {
-        boolean seenNull = false;
-        for ( AnyValue arg : args )
-        {
-            if ( arg == NO_VALUE )
-            {
-                seenNull = true;
-                continue;
-            }
-
-            if ( arg.map( BOOLEAN_MAPPER ) )
-            {
-                return Values.TRUE;
-            }
-        }
-        return seenNull ? NO_VALUE : Values.FALSE;
-    }
-
     public static Value xor( AnyValue lhs, AnyValue rhs )
     {
-        boolean seenNull = false;
-        if ( lhs == NO_VALUE || rhs == NO_VALUE )
-        {
-            return NO_VALUE;
-        }
-
-        return lhs.map( BOOLEAN_MAPPER ) ^ rhs.map( BOOLEAN_MAPPER ) ? Values.TRUE : Values.FALSE;
-    }
-
-    public static Value and( AnyValue... args )
-    {
-        boolean seenNull = false;
-        for ( AnyValue arg : args )
-        {
-            if ( arg == NO_VALUE )
-            {
-                seenNull = true;
-                continue;
-            }
-
-            if ( !arg.map( BOOLEAN_MAPPER ) )
-            {
-                return Values.FALSE;
-            }
-        }
-        return seenNull ? NO_VALUE : Values.TRUE;
+        return (lhs == TRUE) ^ (rhs == TRUE) ? TRUE : FALSE;
     }
 
     public static Value not( AnyValue in )
     {
-        if ( in == NO_VALUE )
-        {
-            return NO_VALUE;
-        }
-
-        return !in.map( BOOLEAN_MAPPER ) ? Values.TRUE : Values.FALSE;
+        return in != TRUE ? TRUE : FALSE;
     }
 
     public static Value equals( AnyValue lhs, AnyValue rhs )
     {
-        Boolean equals = lhs.ternaryEquals( rhs );
-        if ( equals == null )
+        Boolean compare = lhs.ternaryEquals( rhs );
+        if ( compare == null )
         {
             return NO_VALUE;
         }
-        else
-        {
-            return equals ? Values.TRUE : Values.FALSE;
-        }
+        return compare ? TRUE : FALSE;
     }
 
     public static Value notEquals( AnyValue lhs, AnyValue rhs )
     {
-        Boolean equals = lhs.ternaryEquals( rhs );
-        if ( equals == null )
+        Boolean compare = lhs.ternaryEquals( rhs );
+        if ( compare == null )
         {
             return NO_VALUE;
         }
-        else
+        return compare ? FALSE : TRUE;
+    }
+
+    public static BooleanValue regex( TextValue lhs, TextValue rhs )
+    {
+        String regexString = rhs.stringValue();
+        try
         {
-            return equals ? Values.FALSE : Values.TRUE;
+            boolean matches = Pattern.compile( regexString ).matcher( lhs.stringValue() ).matches();
+            return matches ? TRUE : FALSE;
+        }
+        catch ( PatternSyntaxException e )
+        {
+            throw new InvalidSemanticsException( "Invalid Regex: " + e.getMessage() );
         }
     }
 
-    private static final class BooleanMapper implements ValueMapper<Boolean>
+    public static BooleanValue regex( TextValue text, Pattern pattern )
+    {
+        boolean matches = pattern.matcher( text.stringValue() ).matches();
+        return matches ? TRUE : FALSE;
+    }
+
+    public static Value lessThan( AnyValue lhs, AnyValue rhs )
+    {
+        if ( isNan( lhs ) || isNan( rhs ) )
+        {
+            return NO_VALUE;
+        }
+        else if ( lhs instanceof NumberValue && rhs instanceof NumberValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TextValue && rhs instanceof TextValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof BooleanValue && rhs instanceof BooleanValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof PointValue && rhs instanceof PointValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateValue && rhs instanceof DateValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalTimeValue && rhs instanceof LocalTimeValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TimeValue && rhs instanceof TimeValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalDateTimeValue && rhs instanceof LocalDateTimeValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateTimeValue && rhs instanceof DateTimeValue )
+        {
+            return lessThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else
+        {
+            return NO_VALUE;
+        }
+    }
+
+    public static Value lessThanOrEqual( AnyValue lhs, AnyValue rhs )
+    {
+        if ( isNan( lhs ) || isNan( rhs ) )
+        {
+            return NO_VALUE;
+        }
+        else if ( lhs instanceof NumberValue && rhs instanceof NumberValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TextValue && rhs instanceof TextValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof BooleanValue && rhs instanceof BooleanValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof PointValue && rhs instanceof PointValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateValue && rhs instanceof DateValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalTimeValue && rhs instanceof LocalTimeValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TimeValue && rhs instanceof TimeValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalDateTimeValue && rhs instanceof LocalDateTimeValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateTimeValue && rhs instanceof DateTimeValue )
+        {
+            return lessThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else
+        {
+            return NO_VALUE;
+        }
+    }
+
+    public static Value greaterThan( AnyValue lhs, AnyValue rhs )
+    {
+        if ( isNan( lhs ) || isNan( rhs ) )
+        {
+            return NO_VALUE;
+        }
+        else if ( lhs instanceof NumberValue && rhs instanceof NumberValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TextValue && rhs instanceof TextValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof BooleanValue && rhs instanceof BooleanValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof PointValue && rhs instanceof PointValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateValue && rhs instanceof DateValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalTimeValue && rhs instanceof LocalTimeValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TimeValue && rhs instanceof TimeValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalDateTimeValue && rhs instanceof LocalDateTimeValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateTimeValue && rhs instanceof DateTimeValue )
+        {
+            return greaterThan( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else
+        {
+            return NO_VALUE;
+        }
+    }
+
+    public static Value greaterThanOrEqual( AnyValue lhs, AnyValue rhs )
+    {
+        if ( isNan( lhs ) || isNan( rhs ) )
+        {
+            return NO_VALUE;
+        }
+        else if ( lhs instanceof NumberValue && rhs instanceof NumberValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TextValue && rhs instanceof TextValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof BooleanValue && rhs instanceof BooleanValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof PointValue && rhs instanceof PointValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateValue && rhs instanceof DateValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalTimeValue && rhs instanceof LocalTimeValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof TimeValue && rhs instanceof TimeValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof LocalDateTimeValue && rhs instanceof LocalDateTimeValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else if ( lhs instanceof DateTimeValue && rhs instanceof DateTimeValue )
+        {
+            return greaterThanOrEqual( AnyValues.TERNARY_COMPARATOR.ternaryCompare( lhs, rhs ) );
+        }
+        else
+        {
+            return NO_VALUE;
+        }
+    }
+
+    public static Value coerceToBoolean( AnyValue value )
+    {
+        return value.map( BOOLEAN_MAPPER );
+    }
+
+    private static Value lessThan( Comparison comparison )
+    {
+        switch ( comparison )
+        {
+        case GREATER_THAN_AND_EQUAL:
+        case GREATER_THAN:
+        case EQUAL:
+        case SMALLER_THAN_AND_EQUAL:
+            return FALSE;
+        case SMALLER_THAN:
+            return TRUE;
+        case UNDEFINED:
+            return NO_VALUE;
+        default:
+            throw new InternalException( comparison + " is not a known comparison", null );
+        }
+    }
+
+    private static Value lessThanOrEqual( Comparison comparison )
+    {
+        switch ( comparison )
+        {
+        case GREATER_THAN_AND_EQUAL:
+        case GREATER_THAN:
+            return FALSE;
+        case EQUAL:
+        case SMALLER_THAN_AND_EQUAL:
+        case SMALLER_THAN:
+            return TRUE;
+        case UNDEFINED:
+            return NO_VALUE;
+        default:
+            throw new InternalException( comparison + " is not a known comparison", null );
+        }
+    }
+
+    private static Value greaterThanOrEqual( Comparison comparison )
+    {
+        switch ( comparison )
+        {
+        case GREATER_THAN_AND_EQUAL:
+        case GREATER_THAN:
+        case EQUAL:
+            return TRUE;
+        case SMALLER_THAN_AND_EQUAL:
+        case SMALLER_THAN:
+            return FALSE;
+        case UNDEFINED:
+            return NO_VALUE;
+        default:
+            throw new InternalException( comparison + " is not a known comparison", null );
+        }
+    }
+
+    private static Value greaterThan( Comparison comparison )
+    {
+        switch ( comparison )
+        {
+        case GREATER_THAN:
+            return TRUE;
+        case GREATER_THAN_AND_EQUAL:
+        case EQUAL:
+        case SMALLER_THAN_AND_EQUAL:
+        case SMALLER_THAN:
+            return FALSE;
+        case UNDEFINED:
+            return NO_VALUE;
+        default:
+            throw new InternalException( comparison + " is not a known comparison", null );
+        }
+    }
+
+    private static boolean isNan( AnyValue value )
+    {
+        return value instanceof FloatingPointValue && ((FloatingPointValue) value).isNaN();
+    }
+
+    private static final class BooleanMapper implements ValueMapper<Value>
     {
         @Override
-        public Boolean mapPath( PathValue value )
+        public Value mapPath( PathValue value )
         {
-            return value.size() > 0;
+            return value.size() > 0 ? TRUE : FALSE;
         }
 
         @Override
-        public Boolean mapNode( VirtualNodeValue value )
-        {
-            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
-        }
-
-        @Override
-        public Boolean mapRelationship( VirtualRelationshipValue value )
+        public Value mapNode( VirtualNodeValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapMap( MapValue value )
+        public Value mapRelationship( VirtualRelationshipValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapNoValue()
-        {
-            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + NO_VALUE, null );
-        }
-
-        @Override
-        public Boolean mapSequence( SequenceValue value )
-        {
-            return value.length() > 0;
-        }
-
-        @Override
-        public Boolean mapText( TextValue value )
+        public Value mapMap( MapValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapBoolean( BooleanValue value )
+        public Value mapNoValue()
         {
-            return value.booleanValue();
+            return NO_VALUE;
         }
 
         @Override
-        public Boolean mapNumber( NumberValue value )
+        public Value mapSequence( SequenceValue value )
         {
-            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
+            return value.length() > 0 ? TRUE : FALSE;
         }
 
         @Override
-        public Boolean mapDateTime( DateTimeValue value )
-        {
-            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
-        }
-
-        @Override
-        public Boolean mapLocalDateTime( LocalDateTimeValue value )
+        public Value mapText( TextValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapDate( DateValue value )
+        public Value mapBoolean( BooleanValue value )
+        {
+            return value;
+        }
+
+        @Override
+        public Value mapNumber( NumberValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapTime( TimeValue value )
+        public Value mapDateTime( DateTimeValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapLocalTime( LocalTimeValue value )
+        public Value mapLocalDateTime( LocalDateTimeValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapDuration( DurationValue value )
+        public Value mapDate( DateValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }
 
         @Override
-        public Boolean mapPoint( PointValue value )
+        public Value mapTime( TimeValue value )
+        {
+            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
+        }
+
+        @Override
+        public Value mapLocalTime( LocalTimeValue value )
+        {
+            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
+        }
+
+        @Override
+        public Value mapDuration( DurationValue value )
+        {
+            throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
+        }
+
+        @Override
+        public Value mapPoint( PointValue value )
         {
             throw new CypherTypeException( "Don't know how to treat that as a boolean: " + value, null );
         }

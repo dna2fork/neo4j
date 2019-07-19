@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -76,5 +76,11 @@ public final class NamedToken
         int result = id;
         result = 31 * result + name.hashCode();
         return result;
+    }
+
+    @Override
+    public String toString()
+    {
+        return String.format( "%s[name:%s, id:%d]", getClass().getSimpleName(), name, id );
     }
 }

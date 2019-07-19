@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -31,8 +31,8 @@ import java.util.concurrent.TimeoutException;
 import org.neo4j.helpers.FutureAdapter;
 
 import static java.util.Arrays.asList;
-import static org.neo4j.io.proc.ProcessUtil.getClassPath;
-import static org.neo4j.io.proc.ProcessUtil.getJavaExecutable;
+import static org.neo4j.test.proc.ProcessUtil.getClassPath;
+import static org.neo4j.test.proc.ProcessUtil.getJavaExecutable;
 
 public class ProcessTestUtil
 {

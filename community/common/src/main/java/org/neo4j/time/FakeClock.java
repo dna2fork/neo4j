@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,6 +20,7 @@
 package org.neo4j.time;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -69,6 +70,11 @@ public class FakeClock extends SystemNanoClock
     public long millis()
     {
         return TimeUnit.NANOSECONDS.toMillis( nanoTime );
+    }
+
+    public FakeClock forward( Duration delta )
+    {
+        return forward( delta.toNanos(), TimeUnit.NANOSECONDS );
     }
 
     public FakeClock forward( long delta, TimeUnit unit )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,8 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.planner.logical.plans.rewriter
 
-import org.opencypher.v9_0.util.attribution.Attributes
-import org.opencypher.v9_0.util.{Rewriter, bottomUp}
+import org.neo4j.cypher.internal.v3_5.util.attribution.Attributes
+import org.neo4j.cypher.internal.v3_5.util.{Rewriter, bottomUp}
 import org.neo4j.cypher.internal.v3_5.logical.plans.LogicalPlan
 
 import scala.collection.mutable

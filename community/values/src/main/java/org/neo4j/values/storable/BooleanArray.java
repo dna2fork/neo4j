@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -46,6 +46,12 @@ public class BooleanArray extends ArrayValue
     public boolean booleanValue( int offset )
     {
         return value[offset];
+    }
+
+    @Override
+    public String getTypeName()
+    {
+        return "BooleanArray";
     }
 
     @Override
@@ -132,6 +138,6 @@ public class BooleanArray extends ArrayValue
     @Override
     public String toString()
     {
-        return format( "BooleanArray%s", Arrays.toString( value ) );
+        return format( "%s%s", getTypeName(), Arrays.toString( value ) );
     }
 }

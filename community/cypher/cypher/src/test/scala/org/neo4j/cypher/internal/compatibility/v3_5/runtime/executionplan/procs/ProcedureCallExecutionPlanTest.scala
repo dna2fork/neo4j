@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,41 +23,47 @@ import org.mockito.ArgumentMatchers.{any, anyInt}
 import org.mockito.Mockito.when
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
+import org.neo4j.cypher.internal.planner.v3_5.spi.TokenContext
 import org.neo4j.cypher.internal.runtime.interpreted.commands.convert.{CommunityExpressionConverter, ExpressionConverters}
-import org.neo4j.cypher.internal.runtime.{CloseableResource, NormalMode, QueryContext, QueryTransactionalContext}
-import org.opencypher.v9_0.util.DummyPosition
-import org.opencypher.v9_0.util.symbols._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.runtime.{QueryContext, QueryTransactionalContext, ResourceManager}
 import org.neo4j.cypher.internal.v3_5.logical.plans._
+import org.neo4j.cypher.result.RuntimeResult
 import org.neo4j.internal.kernel.api.Procedures
 import org.neo4j.values.storable.LongValue
 import org.neo4j.values.virtual.VirtualValues.EMPTY_MAP
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.DummyPosition
+import org.neo4j.cypher.internal.v3_5.util.attribution.SequentialIdGen
+import org.neo4j.cypher.internal.v3_5.util.symbols._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+
+import scala.collection.JavaConverters._
 
 class ProcedureCallExecutionPlanTest extends CypherFunSuite {
 
-  private val converters = new ExpressionConverters(CommunityExpressionConverter)
+  private val converters = new ExpressionConverters(CommunityExpressionConverter(TokenContext.EMPTY))
+  private val idGen = new SequentialIdGen()
 
   test("should be able to call procedure with single argument") {
     // Given
     val proc = ProcedureCallExecutionPlan(readSignature, Seq(add(int(42), int(42))), Seq("b" -> CTInteger), Seq(0 -> "b"),
-                                          notifications = Set.empty, converters)
+                                          converters, idGen.id())
 
     // When
-    val res = proc.run(ctx, NormalMode, EMPTY_MAP)
+    val res = proc.run(ctx, false, EMPTY_MAP)
 
     // Then
-    res.toList should equal(List(Map("b" -> 84)))
+    toList(res) should equal(List(Map("b" -> 84)))
   }
 
   test("should eagerize write procedure") {
     // Given
     val proc = ProcedureCallExecutionPlan(writeSignature,
                                           Seq(add(int(42), int(42))), Seq("b" -> CTInteger), Seq(0 -> "b"),
-                                          notifications = Set.empty, converters)
+                                          converters, idGen.id())
 
     // When
-    proc.run(ctx, NormalMode, EMPTY_MAP)
+    proc.run(ctx, false, EMPTY_MAP)
 
     // Then without touching the result, it should have been spooled out
     iteratorExhausted should equal(true)
@@ -67,10 +73,10 @@ class ProcedureCallExecutionPlanTest extends CypherFunSuite {
     // Given
     val proc = ProcedureCallExecutionPlan(readSignature,
                                           Seq(add(int(42), int(42))), Seq("b" -> CTInteger), Seq(0 -> "b"),
-                                          notifications = Set.empty, converters)
+                                          converters, idGen.id())
 
     // When
-    proc.run(ctx, NormalMode, EMPTY_MAP)
+    proc.run(ctx, false, EMPTY_MAP)
 
     // Then without touching the result, the Kernel iterator should not be touched
     iteratorExhausted should equal(false)
@@ -100,9 +106,12 @@ class ProcedureCallExecutionPlanTest extends CypherFunSuite {
     ProcedureReadWriteAccess(Array.empty)
   )
 
+  private def toList(res: RuntimeResult): List[Map[String, AnyRef]] =
+    res.asIterator().asScala.map(_.asScala.toMap).toList
+
   private val pos = DummyPosition(-1)
   val ctx = mock[QueryContext]
-  when(ctx.resources).thenReturn(mock[CloseableResource])
+  when(ctx.resources).thenReturn(mock[ResourceManager])
   var iteratorExhausted = false
 
   val procedureResult = new Answer[Iterator[Array[AnyRef]]] {

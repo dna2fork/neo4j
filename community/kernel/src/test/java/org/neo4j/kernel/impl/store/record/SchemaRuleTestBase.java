@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,10 +21,10 @@ package org.neo4j.kernel.impl.store.record;
 
 import java.util.Optional;
 
-import org.neo4j.kernel.api.index.IndexProvider;
+import org.neo4j.internal.kernel.api.schema.IndexProviderDescriptor;
 import org.neo4j.kernel.api.schema.SchemaDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.IndexDescriptorFactory;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptorFactory;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -34,11 +34,12 @@ abstract class SchemaRuleTestBase
     protected static final long RULE_ID = 1;
     protected static final long RULE_ID_2 = 2;
     protected static final int LABEL_ID = 10;
+    protected static final int LABEL_ID_2 = 11;
     protected static final int REL_TYPE_ID = 20;
     protected static final int PROPERTY_ID_1 = 30;
     protected static final int PROPERTY_ID_2 = 31;
 
-    protected static final IndexProvider.Descriptor PROVIDER_DESCRIPTOR = new IndexProvider.Descriptor( "index-provider", "1.0" );
+    protected static final IndexProviderDescriptor PROVIDER_DESCRIPTOR = new IndexProviderDescriptor( "index-provider", "1.0" );
 
     protected void assertEquality( Object o1, Object o2 )
     {

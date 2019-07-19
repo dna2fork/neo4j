@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,13 +21,12 @@ package org.neo4j.kernel.impl.scheduler;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
-import org.neo4j.scheduler.JobScheduler;
-import org.neo4j.scheduler.JobScheduler.JobHandle;
+import org.neo4j.scheduler.Group;
+import org.neo4j.scheduler.JobHandle;
 
 final class ThreadPool
 {
@@ -36,10 +35,10 @@ final class ThreadPool
     private final ConcurrentHashMap<Object,Future<?>> registry;
     private InterruptedException shutdownInterrupted;
 
-    ThreadPool( JobScheduler.Group group, ThreadGroup parentThreadGroup )
+    ThreadPool( Group group, ThreadGroup parentThreadGroup )
     {
         threadFactory = new GroupedDaemonThreadFactory( group, parentThreadGroup );
-        executor = Executors.newCachedThreadPool( threadFactory );
+        executor = group.buildExecutorService( threadFactory );
         registry = new ConcurrentHashMap<>();
     }
 
@@ -89,7 +88,7 @@ final class ThreadPool
         }
     }
 
-    public InterruptedException getShutdownException()
+    InterruptedException getShutdownException()
     {
         return shutdownInterrupted;
     }

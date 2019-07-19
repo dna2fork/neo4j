@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,18 +25,19 @@ import java.util.Map;
 import org.neo4j.consistency.checking.index.IndexAccessors;
 import org.neo4j.consistency.report.ConsistencyReport;
 import org.neo4j.consistency.store.RecordAccess;
+import org.neo4j.internal.kernel.api.exceptions.schema.MalformedSchemaRuleException;
 import org.neo4j.internal.kernel.api.schema.LabelSchemaDescriptor;
 import org.neo4j.internal.kernel.api.schema.RelationTypeSchemaDescriptor;
+import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
 import org.neo4j.internal.kernel.api.schema.SchemaProcessor;
-import org.neo4j.kernel.api.exceptions.schema.MalformedSchemaRuleException;
 import org.neo4j.kernel.impl.store.SchemaRuleAccess;
 import org.neo4j.kernel.impl.store.record.ConstraintRule;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
 import org.neo4j.kernel.impl.store.record.PropertyKeyTokenRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 
 /**
  * Note that this class builds up an in-memory representation of the complete schema store by being used in
@@ -249,17 +250,43 @@ public class SchemaRecordCheck implements RecordCheck<DynamicRecord, Consistency
         public void processSpecific( LabelSchemaDescriptor schema )
         {
             engine.comparativeCheck( records.label( schema.getLabelId() ), VALID_LABEL );
-            for ( int propertyId : schema.getPropertyIds() )
-            {
-                engine.comparativeCheck( records.propertyKey( propertyId ), VALID_PROPERTY_KEY );
-            }
+            checkProperties( schema.getPropertyIds() );
         }
 
         @Override
         public void processSpecific( RelationTypeSchemaDescriptor schema )
         {
             engine.comparativeCheck( records.relationshipType( schema.getRelTypeId() ), VALID_RELATIONSHIP_TYPE );
-            for ( int propertyId : schema.getPropertyIds() )
+            checkProperties( schema.getPropertyIds() );
+        }
+
+        @Override
+        public void processSpecific( SchemaDescriptor schema )
+        {
+            switch ( schema.entityType() )
+            {
+            case NODE:
+                for ( int entityTokenId : schema.getEntityTokenIds() )
+                {
+                    engine.comparativeCheck( records.label( entityTokenId ), VALID_LABEL );
+                }
+                break;
+            case RELATIONSHIP:
+                for ( int entityTokenId : schema.getEntityTokenIds() )
+                {
+                    engine.comparativeCheck( records.relationshipType( entityTokenId ), VALID_RELATIONSHIP_TYPE );
+                }
+                break;
+            default:
+                throw new IllegalArgumentException( "Schema with given entity type is not supported: " + schema.entityType() );
+            }
+
+            checkProperties( schema.getPropertyIds() );
+        }
+
+        private void checkProperties( int[] propertyIds )
+        {
+            for ( int propertyId : propertyIds )
             {
                 engine.comparativeCheck( records.propertyKey( propertyId ), VALID_PROPERTY_KEY );
             }

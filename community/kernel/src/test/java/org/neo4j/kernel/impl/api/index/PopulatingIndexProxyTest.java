@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -25,7 +25,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import org.neo4j.kernel.api.schema.index.CapableIndexDescriptor;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
 
 import static org.mockito.Mockito.verify;
 
@@ -59,6 +59,6 @@ public class PopulatingIndexProxyTest
     {
         populatingIndexProxy.drop();
 
-        verify( indexPopulationJob ).cancelPopulation( indexPopulation );
+        verify( indexPopulationJob ).dropPopulation( indexPopulation );
     }
 }

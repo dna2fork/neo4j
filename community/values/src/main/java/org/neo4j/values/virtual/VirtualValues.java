@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -94,6 +94,11 @@ public final class VirtualValues
             map.put( keys[i], values[i] );
         }
         return new MapValue.MapWrappingMapValue( map );
+    }
+
+    public static ErrorValue error( Exception e )
+    {
+        return new ErrorValue( e );
     }
 
     public static NodeReference node( long id )

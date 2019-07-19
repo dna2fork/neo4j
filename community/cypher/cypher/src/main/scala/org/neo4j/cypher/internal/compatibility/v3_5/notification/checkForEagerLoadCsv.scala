@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,12 +21,12 @@ package org.neo4j.cypher.internal.compatibility.v3_5.notification
 
 import org.neo4j.cypher.internal.compiler.v3_5.EagerLoadCsvNotification
 import org.neo4j.cypher.internal.v3_5.logical.plans.{Eager, LoadCSV, LogicalPlan}
-import org.opencypher.v9_0.util.InternalNotification
+import org.neo4j.cypher.internal.v3_5.util.InternalNotification
 
 object checkForEagerLoadCsv extends NotificationChecker {
 
   def apply(plan: LogicalPlan): Seq[InternalNotification] = {
-    import org.opencypher.v9_0.util.Foldable._
+    import org.neo4j.cypher.internal.v3_5.util.Foldable._
     sealed trait SearchState
     case object NoEagerFound extends SearchState
     case object EagerFound extends SearchState

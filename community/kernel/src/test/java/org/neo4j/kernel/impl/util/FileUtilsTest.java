@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -47,9 +47,9 @@ import static org.neo4j.io.fs.FileUtils.size;
 
 public class FileUtilsTest
 {
-    public TestDirectory testDirectory = TestDirectory.testDirectory();
-    public ExpectedException expected = ExpectedException.none();
-    public FileSystemAbstraction fs = new DefaultFileSystemAbstraction();
+    public final TestDirectory testDirectory = TestDirectory.testDirectory();
+    public final ExpectedException expected = ExpectedException.none();
+    public final FileSystemAbstraction fs = new DefaultFileSystemAbstraction();
 
     @Rule
     public RuleChain chain = RuleChain.outerRule( testDirectory ).around( expected );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,8 +20,7 @@
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.neo4j.cypher.internal.runtime.interpreted.ExecutionContext
-import org.opencypher.v9_0.util.attribution.Id
-import org.neo4j.values.virtual.VirtualValues
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
 
 import scala.collection.JavaConverters._
 
@@ -31,7 +30,7 @@ case class UndirectedRelationshipByIdSeekPipe(ident: String, relIdExpr: SeekArgs
   relIdExpr.registerOwningPipe(this)
 
   protected override def internalCreateResults(state: QueryState): Iterator[ExecutionContext] = {
-    val ctx = state.createOrGetInitialContext(executionContextFactory)
+    val ctx = state.newExecutionContext(executionContextFactory)
     val relIds = relIdExpr.expressions(ctx, state).dropNoValues()
     new UndirectedRelationshipIdSeekIterator(
       ident,

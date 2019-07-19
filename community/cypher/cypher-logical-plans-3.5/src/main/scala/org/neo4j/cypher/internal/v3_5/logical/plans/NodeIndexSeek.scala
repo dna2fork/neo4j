@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,22 @@
  */
 package org.neo4j.cypher.internal.v3_5.logical.plans
 
-import org.opencypher.v9_0.util.attribution.IdGen
-import org.opencypher.v9_0.expressions.{Expression, LabelToken, PropertyKeyToken}
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.attribution.{IdGen, SameId}
 
 /**
-  * For every node with the given label and property values, produces one row with that node.
+  * For every node with the given label and property values, produces rows with that node.
   */
 case class NodeIndexSeek(idName: String,
                          label: LabelToken,
-                         propertyKeys: Seq[PropertyKeyToken],
+                         properties: Seq[IndexedProperty],
                          valueExpr: QueryExpression[Expression],
-                         argumentIds: Set[String])
-                        (implicit idGen: IdGen) extends IndexLeafPlan(idGen) {
+                         argumentIds: Set[String],
+                         indexOrder: IndexOrder)
+                        (implicit idGen: IdGen) extends IndexSeekLeafPlan(idGen) {
 
   override val availableSymbols: Set[String] = argumentIds + idName
+
+  override def copyWithoutGettingValues: NodeIndexSeek =
+    NodeIndexSeek(idName, label, properties.map{ p => IndexedProperty(p.propertyKeyToken, DoNotGetValue) }, valueExpr, argumentIds, indexOrder)(SameId(this.id))
 }

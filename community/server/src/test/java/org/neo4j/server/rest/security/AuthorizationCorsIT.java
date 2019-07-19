@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -166,12 +166,11 @@ public class AuthorizationCorsIT extends CommunityServerTestBase
         return requestBuilder.POST( txCommitURL(), statements );
     }
 
-    private HTTP.Builder requestWithHeaders( String username, String password )
+    private static HTTP.Builder requestWithHeaders( String username, String password )
     {
-        return HTTP.withHeaders(
+        return HTTP.withBasicAuth( username, password ).withHeaders(
                 HttpHeaders.ACCEPT, "application/json; charset=UTF-8",
-                HttpHeaders.CONTENT_TYPE, "application/json",
-                HttpHeaders.AUTHORIZATION, basicAuthHeader( username, password )
+                HttpHeaders.CONTENT_TYPE, "application/json"
         );
     }
 

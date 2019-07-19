@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -36,6 +36,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -47,6 +48,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.FileStore;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -495,12 +497,12 @@ public class FileUtils
         }
     }
 
-    public interface FileOperation
+    public interface Operation
     {
         void perform() throws IOException;
     }
 
-    public static void windowsSafeIOOperation( FileOperation operation ) throws IOException
+    public static void windowsSafeIOOperation( Operation operation ) throws IOException
     {
         IOException storedIoe = null;
         for ( int i = 0; i < NUMBER_OF_RETRIES; i++ )
@@ -584,16 +586,25 @@ public class FileUtils
         return path;
     }
 
-    // TODO javadoc what this one does. It comes from Serverutil initially.
-    public static File getMostCanonicalFile( File file )
+    /**
+     * Canonical file resolution on windows does not resolve links.
+     * Real paths on windows can be resolved only using {@link Path#toRealPath(LinkOption...)}, but file should exist in that case.
+     * We will try to do as much as possible and will try to use {@link Path#toRealPath(LinkOption...)} when file exist and will fallback to only
+     * use {@link File#getCanonicalFile()} if file does not exist.
+     * see JDK-8003887 for details
+     * @param file - file to resolve canonical representation
+     * @return canonical file representation.
+     */
+    public static File getCanonicalFile( File file )
     {
         try
         {
-            return file.getCanonicalFile().getAbsoluteFile();
+            File fileToResolve = file.exists() ? file.toPath().toRealPath().toFile() : file;
+            return fileToResolve.getCanonicalFile();
         }
         catch ( IOException e )
         {
-            return file.getAbsoluteFile();
+            throw new UncheckedIOException( e );
         }
     }
 
@@ -702,16 +713,16 @@ public class FileUtils
      * Calculates the size of a given directory or file given the provided abstract filesystem.
      *
      * @param fs the filesystem abstraction to use
-     * @param path to the file or directory.
+     * @param file to the file or directory.
      * @return the size, in bytes, of the file or the total size of the content in the directory, including
      * subdirectories.
      */
-    public static long size( FileSystemAbstraction fs, File path )
+    public static long size( FileSystemAbstraction fs, File file )
     {
-        if ( fs.isDirectory( path ) )
+        if ( fs.isDirectory( file ) )
         {
             long size = 0L;
-            File[] files = fs.listFiles( path );
+            File[] files = fs.listFiles( file );
             if ( files == null )
             {
                 return 0L;
@@ -724,7 +735,7 @@ public class FileUtils
         }
         else
         {
-            return fs.getFileSize( path );
+            return fs.getFileSize( file );
         }
     }
 }

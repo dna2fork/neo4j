@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -31,12 +31,6 @@ package org.neo4j.unsafe.impl.batchimport.input.csv;
  */
 public interface Deserialization<ENTITY>
 {
-    /**
-     * Called before any other call. Introduced to reduce complexity in error handling where too
-     * much happened in constructors and so resources weren't even assigned when error struck and
-     * cleanup would be tricky and involve duplication.
-     */
-    void initialize();
 
     /**
      * Handles one value of a type described by the {@code entry}. One or more values will be able to

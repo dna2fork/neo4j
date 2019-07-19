@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,20 +24,22 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.Set;
 
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.internal.kernel.api.schema.LabelSchemaDescriptor;
 import org.neo4j.internal.kernel.api.schema.constraints.ConstraintDescriptor;
-import org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
-import org.neo4j.kernel.api.schema.index.StoreIndexDescriptor;
+import org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory;
 import org.neo4j.kernel.api.schema.index.TestIndexDescriptorFactory;
 import org.neo4j.kernel.impl.api.index.IndexProviderMap;
 import org.neo4j.kernel.impl.constraints.StandardConstraintSemantics;
 import org.neo4j.kernel.impl.store.record.ConstraintRule;
+import org.neo4j.storageengine.api.schema.CapableIndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 import org.neo4j.storageengine.api.schema.SchemaRule;
+import org.neo4j.storageengine.api.schema.StoreIndexDescriptor;
 import org.neo4j.test.Race;
 
 import static java.util.Arrays.asList;
@@ -46,9 +48,10 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.neo4j.helpers.collection.Iterators.asSet;
 import static org.neo4j.kernel.api.schema.SchemaDescriptorFactory.forLabel;
-import static org.neo4j.kernel.api.schema.constaints.ConstraintDescriptorFactory.uniqueForLabel;
+import static org.neo4j.kernel.api.schema.constraints.ConstraintDescriptorFactory.uniqueForLabel;
 import static org.neo4j.kernel.impl.store.record.ConstraintRule.constraintRule;
 
 public class SchemaCacheTest
@@ -205,6 +208,37 @@ public class SchemaCacheTest
 
         // Then
         assertThat( descriptor.schema(), equalTo( schema ) );
+    }
+
+    @Test
+    public void schemaCacheSnapshotsShouldBeReadOnly()
+    {
+        // Given
+        SchemaCache cache = newSchemaCache();
+
+        cache.addSchemaRule( newIndexRule( 1L, 1, 2 ) );
+        cache.addSchemaRule( newIndexRule( 2L, 2, 3 ) );
+
+        SchemaCache snapshot = cache.snapshot();
+
+        cache.addSchemaRule( newIndexRule( 3L, 1, 2 ) );
+
+        // When
+        Set<CapableIndexDescriptor> indexes = asSet( snapshot.indexDescriptorsForLabel( 1 ) );
+
+        // Then
+        Set<StoreIndexDescriptor> expected = asSet( newIndexRule( 1L, 1, 2 ) );
+        assertEquals( expected, indexes );
+
+        try
+        {
+            snapshot.addSchemaRule( newIndexRule( 3L, 1, 2 ) );
+            fail( "SchemaCache snapshots should not permit mutation." );
+        }
+        catch ( IllegalStateException ignore )
+        {
+            // Good.
+        }
     }
 
     @Test

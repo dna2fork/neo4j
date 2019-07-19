@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,16 +21,8 @@ package org.neo4j.kernel.monitoring;
 
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.OutputStream;
-import java.io.PrintStream;
-
-import org.neo4j.logging.FormattedLogProvider;
-import org.neo4j.logging.LogProvider;
-
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -168,28 +160,26 @@ public class MonitorsTest
     }
 
     @Test
-    public void exceptionsInHandlersAreLogged()
+    public void eventShouldBubbleUp()
     {
-        // given
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        OutputStream outputStream = new PrintStream( byteArrayOutputStream );
-        LogProvider logProvider = FormattedLogProvider.toOutputStream( outputStream );
-        Monitors monitors = new Monitors( logProvider );
+        Monitors parent = new Monitors();
+        MyMonitor parentListener = mock( MyMonitor.class );
+        parent.addMonitorListener( parentListener );
 
-        // and
-        MyMonitor listener = mock( MyMonitor.class );
-        RuntimeException runtimeException = new RuntimeException( "Exception message" );
-        doThrow( runtimeException ).when( listener ).aVoid();
-        monitors.addMonitorListener( listener );
+        Monitors child = new Monitors( parent );
+        MyMonitor childListener = mock( MyMonitor.class );
+        child.addMonitorListener( childListener );
 
-        // when
-        MyMonitor monitor = monitors.newMonitor( MyMonitor.class );
-        monitor.aVoid();
+        // Calls on monitors from parent should not reach child listeners
+        MyMonitor parentMonitor = parent.newMonitor( MyMonitor.class );
+        parentMonitor.aVoid();
+        verify( parentListener, times( 1 ) ).aVoid();
+        verifyZeroInteractions( childListener );
 
-        // then
-        String logOutput = byteArrayOutputStream.toString();
-        assertTrue( logOutput.contains( "RuntimeException: Exception message" ) );
-        assertTrue( logOutput.contains( this.getClass().getName() ) );
-        assertTrue( logOutput.contains( "Encountered exception while handling listener for monitor method aVoid" ) );
+        // Calls on monitors from child should reach both listeners
+        MyMonitor childMonitor = child.newMonitor( MyMonitor.class );
+        childMonitor.aVoid();
+        verify( parentListener, times( 2 ) ).aVoid();
+        verify( childListener, times( 1 ) ).aVoid();
     }
 }

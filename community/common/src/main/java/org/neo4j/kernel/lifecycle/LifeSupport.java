@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -215,7 +215,7 @@ public class LifeSupport implements Lifecycle
         return instance;
     }
 
-    public synchronized <T extends Lifecycle> T addLast( T instance )
+    public synchronized <T extends Lifecycle> T setLast( T instance )
     {
         if ( last != null )
         {
@@ -316,8 +316,8 @@ public class LifeSupport implements Lifecycle
     private void bringToState( LifecycleInstance instance )
             throws LifecycleException
     {
-        switch ( status )
-        {
+            switch ( status )
+            {
             case STARTED:
                 instance.start();
                 break;

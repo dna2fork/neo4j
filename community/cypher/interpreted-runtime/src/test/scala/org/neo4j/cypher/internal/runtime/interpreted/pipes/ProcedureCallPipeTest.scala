@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,8 +23,8 @@ import org.neo4j.cypher.internal.runtime.ImplicitValueConversion._
 import org.neo4j.cypher.internal.runtime.interpreted.commands.expressions.Variable
 import org.neo4j.cypher.internal.runtime.interpreted.{ExecutionContext, ImplicitDummyPos, QueryContextAdaptation, QueryStateHelper}
 import org.neo4j.cypher.internal.runtime.{EagerReadWriteCallMode, LazyReadOnlyCallMode, QueryContext}
-import org.opencypher.v9_0.util.symbols._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.symbols._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 import org.neo4j.cypher.internal.v3_5.logical.plans._
 import org.neo4j.values.AnyValue
 import org.neo4j.values.storable.{IntValue, LongValue}
@@ -117,8 +117,6 @@ class ProcedureCallPipeTest
 
   class FakeQueryContext(id: Int, result: Seq[Any] => Iterator[Array[AnyRef]],
                          expectedAccessMode: ProcedureAccessMode) extends QueryContext with QueryContextAdaptation {
-    override def isGraphKernelResultValue(v: Any): Boolean = false
-
     override def callReadOnlyProcedure(id: Int, args: Seq[Any], allowed: Array[String]) = {
       expectedAccessMode should equal(ProcedureReadOnlyAccess(emptyStringArray))
       doIt(id, args, allowed)

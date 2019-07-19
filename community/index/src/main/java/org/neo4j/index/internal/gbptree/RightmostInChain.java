@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -70,7 +70,7 @@ class RightmostInChain
         {
             errorMessage = addPatternToExceptionMessage( newRightmostNodeGeneration, newRightmostLeftSiblingPointer,
                     newRightmostLeftSiblingPointerGeneration, newRightmostNode, errorMessage );
-            throw new IllegalStateException( errorMessage );
+            throw new TreeInconsistencyException( errorMessage );
         }
 
         // Update currentRightmostNode = newRightmostNode;
@@ -109,6 +109,6 @@ class RightmostInChain
     void assertLast()
     {
         assert currentRightmostRightSiblingPointer == NO_NODE_FLAG : "Expected rightmost right sibling to be " + NO_NODE_FLAG
-                + " but was " + currentRightmostRightSiblingPointer;
+                + " but was " + currentRightmostRightSiblingPointer + ". Current rightmost node is " + currentRightmostNode;
     }
 }

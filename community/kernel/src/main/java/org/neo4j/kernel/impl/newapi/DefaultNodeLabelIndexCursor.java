@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -34,7 +34,7 @@ import org.neo4j.storageengine.api.txstate.LongDiffSets;
 import static org.neo4j.collection.PrimitiveLongCollections.mergeToSet;
 import static org.neo4j.kernel.impl.store.record.AbstractBaseRecord.NO_ID;
 
-class DefaultNodeLabelIndexCursor extends IndexCursor<LabelScanValueIndexProgressor>
+class DefaultNodeLabelIndexCursor extends IndexCursor<IndexProgressor>
         implements NodeLabelIndexCursor, NodeLabelClient
 {
     private Read read;
@@ -52,7 +52,7 @@ class DefaultNodeLabelIndexCursor extends IndexCursor<LabelScanValueIndexProgres
     }
 
     @Override
-    public void scan( LabelScanValueIndexProgressor progressor, boolean providesLabels, int label )
+    public void scan( IndexProgressor progressor, boolean providesLabels, int label )
     {
         super.initialize( progressor );
         if ( read.hasTxStateWithChanges() )
@@ -169,7 +169,7 @@ class DefaultNodeLabelIndexCursor extends IndexCursor<LabelScanValueIndexProgres
         else
         {
             return "NodeLabelIndexCursor[node=" + node + ", labels= " + labels +
-                    ", underlying record=" + super.toString() + " ]";
+                    ", underlying record=" + super.toString() + "]";
         }
     }
 

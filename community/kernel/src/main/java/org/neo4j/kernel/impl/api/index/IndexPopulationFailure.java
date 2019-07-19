@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -44,7 +44,7 @@ public abstract class IndexPopulationFailure
             public IndexPopulationFailedKernelException asIndexPopulationFailure(
                     SchemaDescriptor descriptor, String indexUserDescription )
             {
-                return new IndexPopulationFailedKernelException( descriptor, indexUserDescription, failure );
+                return new IndexPopulationFailedKernelException( indexUserDescription, failure );
             }
         };
     }
@@ -63,8 +63,14 @@ public abstract class IndexPopulationFailure
             public IndexPopulationFailedKernelException asIndexPopulationFailure(
                     SchemaDescriptor descriptor, String indexUserDescription )
             {
-                return new IndexPopulationFailedKernelException( descriptor, indexUserDescription, failure );
+                return new IndexPopulationFailedKernelException( indexUserDescription, failure );
             }
         };
+    }
+
+    public static String appendCauseOfFailure( String message, String causeOfFailure )
+    {
+        return String.format( "%s: Cause of failure:%n" +
+                "==================%n%s%n==================", message, causeOfFailure );
     }
 }

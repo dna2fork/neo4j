@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -57,12 +57,12 @@ public class PrimitiveLongResourceCollections
         return new PrimitiveLongConcatingResourceIterator( primitiveLongResourceIterators );
     }
 
-    abstract static class PrimitiveLongBaseResourceIterator extends PrimitiveLongCollections.PrimitiveLongBaseIterator
+    public abstract static class PrimitiveLongBaseResourceIterator extends PrimitiveLongCollections.PrimitiveLongBaseIterator
             implements PrimitiveLongResourceIterator
     {
         private Resource resource;
 
-        PrimitiveLongBaseResourceIterator( Resource resource )
+        public PrimitiveLongBaseResourceIterator( Resource resource )
         {
             this.resource = resource;
         }

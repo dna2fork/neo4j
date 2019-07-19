@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -45,5 +45,14 @@ public interface TokenCreator
      * @param indexFilter A filter for the array indexes for which a token needs an id.
      * @throws KernelException If the inner transaction used to allocate the tokens encountered a problem.
      */
-    void createTokens( String[] names, int[] ids, IntPredicate indexFilter ) throws KernelException;
+    default void createTokens( String[] names, int[] ids, IntPredicate indexFilter ) throws KernelException
+    {
+        for ( int i = 0; i < ids.length; i++ )
+        {
+            if ( indexFilter.test( i ) )
+            {
+                ids[i] = createToken( names[i] );
+            }
+        }
+    }
 }

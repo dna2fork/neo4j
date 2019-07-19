@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,16 +20,32 @@
 package org.neo4j.cypher.internal.compiler.v3_5.planner
 
 import org.neo4j.cypher.internal.ir.v3_5.PlannerQuery
-import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.{Cardinalities, Solveds}
-import org.opencypher.v9_0.ast.AstConstructionTestSupport
-import org.opencypher.v9_0.parser.ParserFixture
-import org.opencypher.v9_0.util.Cardinality
-import org.opencypher.v9_0.util.attribution.{Id, SequentialIdGen}
-import org.opencypher.v9_0.util.test_helpers.CypherTestSupport
+import org.neo4j.cypher.internal.ir.v3_5.ProvidedOrder
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Cardinalities
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.ProvidedOrders
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlanningAttributes.Solveds
+import org.neo4j.cypher.internal.v3_5.logical.plans.CachedNodeProperty
+import org.neo4j.cypher.internal.v3_5.logical.plans.GetValue
+import org.neo4j.cypher.internal.v3_5.logical.plans.IndexOrderNone
+import org.neo4j.cypher.internal.v3_5.logical.plans.IndexedProperty
+import org.neo4j.cypher.internal.v3_5.logical.plans.NodeIndexScan
+import org.neo4j.cypher.internal.v3_5.ast.AstConstructionTestSupport
+import org.neo4j.cypher.internal.v3_5.expressions.LabelToken
+import org.neo4j.cypher.internal.v3_5.expressions.PropertyKeyName
+import org.neo4j.cypher.internal.v3_5.expressions.PropertyKeyToken
+import org.neo4j.cypher.internal.v3_5.parser.ParserFixture
+import org.neo4j.cypher.internal.v3_5.util.Cardinality
+import org.neo4j.cypher.internal.v3_5.util.LabelId
+import org.neo4j.cypher.internal.v3_5.util.PropertyKeyId
+import org.neo4j.cypher.internal.v3_5.util.attribution.Id
+import org.neo4j.cypher.internal.v3_5.util.attribution.SequentialIdGen
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherTestSupport
 
 import scala.language.implicitConversions
 
 trait LogicalPlanConstructionTestSupport extends CypherTestSupport {
+  self: AstConstructionTestSupport =>
+
   implicit val idGen = new SequentialIdGen()
 
   implicit protected def idSymbol(name: Symbol): String = name.name
@@ -52,6 +68,25 @@ trait LogicalPlanConstructionTestSupport extends CypherTestSupport {
     override def get(id: Id): Cardinality = 0.0
 
     override def copy(from: Id, to: Id): Unit = {}
+  }
+
+  class StubProvidedOrders extends ProvidedOrders {
+    override def set(id: Id, t: ProvidedOrder): Unit = {}
+
+    override def isDefinedAt(id: Id): Boolean = true
+
+    override def get(id: Id): ProvidedOrder = ProvidedOrder.empty
+
+    override def copy(from: Id, to: Id): Unit = {}
+  }
+
+  def nodeIndexScan(node: String, label: String, property: String) =
+    NodeIndexScan(node, LabelToken(label, LabelId(1)), IndexedProperty(PropertyKeyToken(property, PropertyKeyId(1)), GetValue), Set.empty, IndexOrderNone)
+
+  def cached(varAndProp: String): CachedNodeProperty = {
+    val array = varAndProp.split("\\.", 2)
+    val (v, prop) = (array(0), array(1))
+    CachedNodeProperty(v, PropertyKeyName(prop)(pos))(pos)
   }
 
 }

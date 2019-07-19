@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,18 +19,17 @@
  */
 package org.neo4j.kernel.impl.index.schema;
 
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Supplier;
 
 import org.neo4j.collection.PrimitiveLongResourceIterator;
 import org.neo4j.internal.kernel.api.IndexQuery;
+import org.neo4j.internal.kernel.api.exceptions.schema.IndexNotApplicableKernelException;
 import org.neo4j.kernel.api.exceptions.index.IndexEntryConflictException;
-import org.neo4j.kernel.api.exceptions.index.IndexNotApplicableKernelException;
 import org.neo4j.kernel.api.index.IndexEntryUpdate;
 import org.neo4j.kernel.api.index.IndexUpdater;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 import org.neo4j.storageengine.api.schema.IndexReader;
 import org.neo4j.values.storable.ValueTuple;
 
@@ -73,7 +72,7 @@ public class DeferredConflictCheckingIndexUpdater implements IndexUpdater
     }
 
     @Override
-    public void process( IndexEntryUpdate<?> update ) throws IOException, IndexEntryConflictException
+    public void process( IndexEntryUpdate<?> update ) throws IndexEntryConflictException
     {
         actual.process( update );
         if ( update.updateMode() != REMOVED )
@@ -83,7 +82,7 @@ public class DeferredConflictCheckingIndexUpdater implements IndexUpdater
     }
 
     @Override
-    public void close() throws IOException, IndexEntryConflictException
+    public void close() throws IndexEntryConflictException
     {
         actual.close();
         try ( IndexReader reader = readerSupplier.get() )

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,20 +19,20 @@
  */
 package org.neo4j.index.internal.gbptree;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class GenerationTest
+class GenerationTest
 {
     @Test
-    public void shouldSetLowGenerations()
+    void shouldSetLowGenerations()
     {
         shouldComposeAndDecomposeGeneration( GenerationSafePointer.MIN_GENERATION, GenerationSafePointer.MIN_GENERATION + 1 );
     }
 
     @Test
-    public void shouldSetHighGenerations()
+    void shouldSetHighGenerations()
     {
         shouldComposeAndDecomposeGeneration( GenerationSafePointer.MAX_GENERATION - 1, GenerationSafePointer.MAX_GENERATION );
     }

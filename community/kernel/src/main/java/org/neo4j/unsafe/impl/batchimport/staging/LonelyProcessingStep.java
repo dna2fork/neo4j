@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -51,15 +51,12 @@ public abstract class LonelyProcessingStep extends AbstractStep<Void>
                 {
                     lastProcessingTimestamp = nanoTime();
                     process();
+                    endOfUpstream();
                 }
                 catch ( Throwable e )
                 {
                     // we need to update panic state before ending upstream and notifying executor that we completed
                     issuePanic( e );
-                }
-                finally
-                {
-                    endOfUpstream();
                 }
             }
             catch ( Throwable e )

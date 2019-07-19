@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,11 +23,17 @@ import java.util.Collection;
 
 import org.neo4j.server.NeoServer;
 
+/**
+ * @deprecated Server plugins are deprecated for removal in the next major release. Please use unmanaged extensions instead.
+ */
+@Deprecated
 public interface SPIPluginLifecycle extends PluginLifecycle
 {
 
+    @Deprecated
     Collection<Injectable<?>> start( NeoServer neoServer );
 
+    @Deprecated
     @Override
     void stop();
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,12 +27,12 @@ import org.neo4j.cypher.internal.compatibility.v3_5.notification.checkForLoadCsv
 import org.neo4j.cypher.internal.compiler.v3_5.LargeLabelWithLoadCsvNotification
 import org.neo4j.cypher.internal.compiler.v3_5.planner.LogicalPlanningTestSupport
 import org.neo4j.cypher.internal.ir.v3_5.HasHeaders
-import org.neo4j.cypher.internal.planner.v3_5.spi.{GraphStatistics, PlanContext}
+import org.neo4j.cypher.internal.planner.v3_5.spi.{GraphStatistics, InstrumentedGraphStatistics, PlanContext}
 import org.neo4j.cypher.internal.runtime.interpreted.CSVResources
 import org.neo4j.cypher.internal.v3_5.logical.plans._
-import org.opencypher.v9_0.expressions.{LabelName, StringLiteral}
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.util.{Cardinality, LabelId}
+import org.neo4j.cypher.internal.v3_5.expressions.{LabelName, StringLiteral}
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.{Cardinality, LabelId}
 
 class CheckForLoadCsvAndMatchOnLargeLabelTest
     extends CypherFunSuite
@@ -51,7 +51,7 @@ class CheckForLoadCsvAndMatchOnLargeLabelTest
       indexFor.get(label)
     }
   })
-  private val statistics = mock[GraphStatistics]
+  private val statistics = mock[InstrumentedGraphStatistics]
   when(statistics.nodesWithLabelCardinality(Some(LabelId(1)))).thenReturn(Cardinality(101))
   when(statistics.nodesWithLabelCardinality(Some(LabelId(2)))).thenReturn(Cardinality(99))
   when(planContext.statistics).thenReturn(statistics)

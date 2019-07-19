@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -27,7 +27,7 @@ import org.mockito.Mockito._
 import org.neo4j.csv.reader.Configuration
 import org.neo4j.cypher.internal.runtime.{QueryContext, QueryTransactionalContext}
 import org.neo4j.cypher.internal.runtime.interpreted.pipes.ExternalCSVResource
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 class LoadCsvPeriodicCommitObserverTest extends CypherFunSuite {
   private val DEFAULT_BUFFER_SIZE = Configuration.DEFAULT_BUFFER_SIZE_4MB

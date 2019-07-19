@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -35,9 +35,11 @@ import org.neo4j.io.pagecache.impl.SingleFilePageSwapperFactory;
 import org.neo4j.io.pagecache.impl.muninn.MuninnPageCache;
 import org.neo4j.io.pagecache.tracing.PageCacheTracer;
 import org.neo4j.io.pagecache.tracing.cursor.PageCursorTracerSupplier;
+import org.neo4j.io.pagecache.tracing.cursor.context.EmptyVersionContextSupplier;
 import org.neo4j.io.pagecache.tracing.cursor.context.VersionContextSupplier;
 import org.neo4j.memory.LocalMemoryTracker;
-import org.neo4j.io.pagecache.tracing.cursor.context.EmptyVersionContextSupplier;
+import org.neo4j.scheduler.JobScheduler;
+import org.neo4j.scheduler.ThreadPoolJobScheduler;
 
 public class PageCacheRule extends ExternalResource
 {
@@ -157,6 +159,7 @@ public class PageCacheRule extends ExternalResource
         return new PageCacheConfig();
     }
 
+    protected JobScheduler jobScheduler;
     protected PageCache pageCache;
     final PageCacheConfig baseConfig;
 
@@ -195,21 +198,25 @@ public class PageCacheRule extends ExternalResource
 
         SingleFilePageSwapperFactory factory = new SingleFilePageSwapperFactory();
         factory.open( fs, Configuration.EMPTY );
-
         VersionContextSupplier contextSupplier = EmptyVersionContextSupplier.EMPTY;
         MemoryAllocator mman = MemoryAllocator.createAllocator( selectConfig( baseConfig.memory, overriddenConfig.memory, "8 MiB" ),
                 new LocalMemoryTracker() );
+        initializeJobScheduler();
         if ( pageSize != null )
         {
-            pageCache = new MuninnPageCache( factory, mman, pageSize, cacheTracer, cursorTracerSupplier,
-                    contextSupplier );
+            pageCache = new MuninnPageCache( factory, mman, pageSize, cacheTracer, cursorTracerSupplier, contextSupplier, jobScheduler );
         }
         else
         {
-            pageCache = new MuninnPageCache( factory, mman, cacheTracer, cursorTracerSupplier, contextSupplier );
+            pageCache = new MuninnPageCache( factory, mman, cacheTracer, cursorTracerSupplier, contextSupplier, jobScheduler );
         }
         pageCachePostConstruct( overriddenConfig );
         return pageCache;
+    }
+
+    protected void initializeJobScheduler()
+    {
+        jobScheduler = new ThreadPoolJobScheduler();
     }
 
     protected static <T> T selectConfig( T base, T overridden, T defaultValue )
@@ -236,22 +243,34 @@ public class PageCacheRule extends ExternalResource
 
     protected void closeExistingPageCache()
     {
-        if ( pageCache != null )
-        {
-            try
-            {
-                pageCache.close();
-            }
-            catch ( Exception e )
-            {
-                throw new AssertionError(
-                        "Failed to stop existing PageCache prior to creating a new one", e );
-            }
-        }
+        closePageCache( "Failed to stop existing PageCache prior to creating a new one." );
+        closeJobScheduler( "Failed to stop existing job scheduler prior to creating a new one." );
     }
 
     @Override
     protected void after( boolean success )
+    {
+        closePageCache( "Failed to stop PageCache after test." );
+        closeJobScheduler( "Failed to stop job scheduler after test." );
+    }
+
+    private void closeJobScheduler( String errorMessage )
+    {
+        if ( jobScheduler != null )
+        {
+            try
+            {
+                jobScheduler.close();
+            }
+            catch ( Exception e )
+            {
+                throw new RuntimeException( errorMessage, e );
+            }
+            jobScheduler = null;
+        }
+    }
+
+    private void closePageCache( String errorMessage )
     {
         if ( pageCache != null )
         {
@@ -261,7 +280,7 @@ public class PageCacheRule extends ExternalResource
             }
             catch ( Exception e )
             {
-                throw new AssertionError( "Failed to stop PageCache after test", e );
+                throw new AssertionError( errorMessage, e );
             }
             pageCache = null;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,17 +19,17 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5.ast.conditions
 
-import org.opencypher.v9_0.ast._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.expressions._
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
 
 class ContainsNamedPathOnlyForShortestPathTest extends CypherFunSuite with AstConstructionTestSupport {
-  private val condition: (Any => Seq[String]) = containsNamedPathOnlyForShortestPath
+  private val condition: Any => Seq[String] = containsNamedPathOnlyForShortestPath
 
   test("happy when we have no named paths") {
     val ast = Query(None, SingleQuery(Seq(
       Match(optional = false, Pattern(Seq(EveryPath(NodePattern(Some(varFor("n")), Seq.empty, None)(pos))))(pos), Seq.empty, None)(pos),
-      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None, None)(pos)
+      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None)(pos)
     ))(pos))(pos)
 
     condition(ast) shouldBe empty
@@ -39,7 +39,7 @@ class ContainsNamedPathOnlyForShortestPathTest extends CypherFunSuite with AstCo
     val namedPattern: NamedPatternPart = NamedPatternPart(varFor("p"), EveryPath(NodePattern(Some(varFor("n")), Seq.empty, None)(pos)))(pos)
     val ast = Query(None, SingleQuery(Seq(
       Match(optional = false, Pattern(Seq(namedPattern))(pos), Seq.empty, None)(pos),
-      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None, None)(pos)
+      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None)(pos)
     ))(pos))(pos)
 
     condition(ast) should equal(Seq(s"Expected none but found $namedPattern at position $pos"))
@@ -48,7 +48,7 @@ class ContainsNamedPathOnlyForShortestPathTest extends CypherFunSuite with AstCo
   test("should allow named path for shortest path") {
     val ast = Query(None, SingleQuery(Seq(
       Match(optional = false, Pattern(Seq(NamedPatternPart(varFor("p"), ShortestPaths(NodePattern(Some(varFor("n")), Seq.empty, None)(pos), single = true)(pos))(pos)))(pos), Seq.empty, None)(pos),
-      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None, None)(pos)
+      Return(distinct = false, ReturnItems(includeExisting = false, Seq(AliasedReturnItem(varFor("n"), varFor("n"))(pos)))(pos), None, None, None)(pos)
     ))(pos))(pos)
 
     condition(ast) shouldBe empty

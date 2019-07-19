@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -26,6 +26,7 @@ import java.io.File;
 import java.nio.file.OpenOption;
 
 import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.io.layout.DatabaseLayout;
 import org.neo4j.io.pagecache.PageCache;
 import org.neo4j.io.pagecache.tracing.cursor.context.EmptyVersionContextSupplier;
 import org.neo4j.io.pagecache.tracing.cursor.context.VersionContextSupplier;
@@ -46,14 +47,13 @@ import static org.junit.Assume.assumeTrue;
 public class NeoStoreOpenFailureTest
 {
     @Rule
-    public PageCacheAndDependenciesRule rules = new PageCacheAndDependenciesRule( DefaultFileSystemRule::new, null );
+    public PageCacheAndDependenciesRule rules = new PageCacheAndDependenciesRule().with( new DefaultFileSystemRule() );
 
     @Test
     public void mustCloseAllStoresIfNeoStoresFailToOpen()
     {
         PageCache pageCache = rules.pageCache();
-        File dir = rules.directory().directory( "dir" );
-        File neoStoreFile = new File( dir, MetaDataStore.DEFAULT_NAME );
+        DatabaseLayout databaseLayout = rules.directory().databaseLayout();
         Config config = Config.defaults();
         FileSystemAbstraction fs = rules.fileSystem();
         IdGeneratorFactory idGenFactory = new DefaultIdGeneratorFactory( fs );
@@ -65,9 +65,9 @@ public class NeoStoreOpenFailureTest
         StoreType[] storeTypes = StoreType.values();
         OpenOption[] openOptions = new OpenOption[0];
         NeoStores neoStores = new NeoStores(
-                neoStoreFile, config, idGenFactory, pageCache, logProvider, fs, versions, formats, create, storeTypes,
+                databaseLayout, config, idGenFactory, pageCache, logProvider, fs, versions, formats, create, storeTypes,
                 openOptions );
-        File schemaStore = neoStores.getSchemaStore().getStorageFileName();
+        File schemaStore = neoStores.getSchemaStore().getStorageFile();
         neoStores.close();
 
         // Make the schema store inaccessible, to sabotage the next initialisation we'll do.
@@ -78,7 +78,7 @@ public class NeoStoreOpenFailureTest
         {
             // This should fail due to the permissions we changed above.
             // And when it fails, the already-opened stores should be closed.
-            new NeoStores( neoStoreFile, config, idGenFactory, pageCache, logProvider, fs, versions, formats, create,
+            new NeoStores( databaseLayout, config, idGenFactory, pageCache, logProvider, fs, versions, formats, create,
                     storeTypes, openOptions );
             fail( "Opening NeoStores should have thrown." );
         }

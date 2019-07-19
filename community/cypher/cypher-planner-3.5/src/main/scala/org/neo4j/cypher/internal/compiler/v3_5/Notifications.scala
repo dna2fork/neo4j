@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,9 +19,19 @@
  */
 package org.neo4j.cypher.internal.compiler.v3_5
 
-import org.opencypher.v9_0.util.{InputPosition, InternalNotification}
+import org.neo4j.cypher.internal.v3_5.util.{InputPosition, InternalNotification}
 
-case class SuboptimalIndexForWildcardQueryNotification(label: String, propertyKeys: Seq[String]) extends InternalNotification
+case class SuboptimalIndexForConstainsQueryNotification(label: String, propertyKeys: Seq[String]) extends InternalNotification
+
+case class SuboptimalIndexForEndsWithQueryNotification(label: String, propertyKeys: Seq[String]) extends InternalNotification
+
+case object StartUnavailableFallback extends InternalNotification
+
+case class CreateUniqueUnavailableFallback(position: InputPosition) extends InternalNotification
+
+case class CreateUniqueDeprecated(position: InputPosition) extends InternalNotification
+
+case object RulePlannerUnavailableFallbackNotification extends InternalNotification
 
 case object PlannerUnsupportedNotification extends InternalNotification
 
@@ -53,6 +63,8 @@ case class ProcedureWarningNotification(position: InputPosition, procedure: Stri
 
 case class DeprecatedFieldNotification(position: InputPosition, procedure: String, field: String) extends InternalNotification
 
-case object DeprecatedPlannerNotification extends InternalNotification
+case object DeprecatedRulePlannerNotification extends InternalNotification
+
+case object DeprecatedCompiledRuntimeNotification extends InternalNotification
 
 case class ExperimentalFeatureNotification(msg: String) extends InternalNotification

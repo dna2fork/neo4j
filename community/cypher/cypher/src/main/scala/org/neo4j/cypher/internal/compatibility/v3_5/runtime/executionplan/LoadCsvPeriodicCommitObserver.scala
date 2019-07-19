@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import java.net.URL
 
 import org.neo4j.cypher.internal.runtime.QueryContext
 import org.neo4j.cypher.internal.runtime.interpreted.pipes.ExternalCSVResource
-import org.opencypher.v9_0.util.{CypherException, LoadCsvStatusWrapCypherException}
+import org.neo4j.cypher.internal.v3_5.util.{CypherException, LoadCsvStatusWrapCypherException}
 
 class LoadCsvPeriodicCommitObserver(batchRowCount: Long, resources: ExternalCSVResource, queryContext: QueryContext)
   extends ExternalCSVResource with ((CypherException) => CypherException) {

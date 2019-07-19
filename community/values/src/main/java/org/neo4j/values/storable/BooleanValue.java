@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -38,7 +38,7 @@ public abstract class BooleanValue extends ScalarValue
     @Override
     public boolean eq( Object other )
     {
-        return other != null && other instanceof Value && equals( (Value) other );
+        return other instanceof Value && equals( (Value) other );
     }
 
     @Override
@@ -47,6 +47,7 @@ public abstract class BooleanValue extends ScalarValue
         return mapper.mapBoolean( this );
     }
 
+    @Override
     public ValueGroup valueGroup()
     {
         return ValueGroup.BOOLEAN;
@@ -64,6 +65,12 @@ public abstract class BooleanValue extends ScalarValue
     public long updateHash( HashFunction hashFunction, long hash )
     {
         return hashFunction.update( hash, hashCode() );
+    }
+
+    @Override
+    public String getTypeName()
+    {
+        return "Boolean";
     }
 
     public static final BooleanValue TRUE = new BooleanValue()
@@ -87,6 +94,7 @@ public abstract class BooleanValue extends ScalarValue
             return 1231;
         }
 
+        @Override
         public boolean booleanValue()
         {
             return true;
@@ -120,7 +128,7 @@ public abstract class BooleanValue extends ScalarValue
         @Override
         public String toString()
         {
-            return format( "Boolean('%s')", Boolean.toString( true ) );
+            return format( "%s('%s')", getTypeName(), Boolean.toString( true ) );
         }
     };
 
@@ -145,6 +153,7 @@ public abstract class BooleanValue extends ScalarValue
             return 1237;
         }
 
+        @Override
         public boolean booleanValue()
         {
             return false;
@@ -178,7 +187,7 @@ public abstract class BooleanValue extends ScalarValue
         @Override
         public String toString()
         {
-            return format( "Boolean('%s')", Boolean.toString( false ) );
+            return format( "%s('%s')", getTypeName(), Boolean.toString( false ) );
         }
     };
 }

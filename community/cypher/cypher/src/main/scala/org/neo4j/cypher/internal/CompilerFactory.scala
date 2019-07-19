@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,6 @@
  */
 package org.neo4j.cypher.internal
 
-import org.neo4j.cypher.internal.compiler.v3_5.CypherPlannerConfiguration
 import org.neo4j.cypher.{CypherPlannerOption, CypherRuntimeOption, CypherUpdateStrategy, CypherVersion}
 
 /**
@@ -29,6 +28,5 @@ trait CompilerFactory {
   def createCompiler(cypherVersion: CypherVersion,
                      cypherPlanner: CypherPlannerOption,
                      cypherRuntime: CypherRuntimeOption,
-                     cypherUpdateStrategy: CypherUpdateStrategy,
-                     config: CypherPlannerConfiguration): Compiler
+                     cypherUpdateStrategy: CypherUpdateStrategy): Compiler
 }

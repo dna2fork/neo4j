@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,7 +19,7 @@
  */
 package org.neo4j.metatest;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
@@ -32,10 +32,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.neo4j.test.BatchTransaction.beginBatchTx;
 
-public class BatchTransactionTest
+class BatchTransactionTest
 {
     @Test
-    public void shouldUseProgressListener()
+    void shouldUseProgressListener()
     {
         // GIVEN
         Transaction transaction = mock( Transaction.class );

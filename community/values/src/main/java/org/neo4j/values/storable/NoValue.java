@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -29,10 +29,10 @@ import org.neo4j.values.ValueMapper;
  * The NULL object of the Value world. Is implemented as a singleton, to allow direct reference equality checks (==),
  * and avoid unnecessary object creation.
  */
-final class NoValue extends Value
+public final class NoValue extends Value
 {
     @SuppressWarnings( "WeakerAccess" )
-    static final NoValue NO_VALUE = new NoValue();
+    public static final NoValue NO_VALUE = new NoValue();
 
     private NoValue()
     {
@@ -94,6 +94,12 @@ final class NoValue extends Value
 
     @Override
     public String prettyPrint()
+    {
+        return getTypeName();
+    }
+
+    @Override
+    public String getTypeName()
     {
         return "NO_VALUE";
     }

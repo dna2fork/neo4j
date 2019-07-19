@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -21,27 +21,31 @@ package org.neo4j.cypher.internal.compiler.v3_5
 
 import java.time.Clock
 
-import org.opencypher.v9_0.util.InputPosition
-import org.neo4j.cypher.internal.compiler.v3_5.phases.{PlannerContext, _}
+import org.neo4j.cypher.internal.compiler.v3_5.phases.PlannerContext
+import org.neo4j.cypher.internal.compiler.v3_5.phases._
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical._
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.debug.DebugPrinter
 import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.plans.rewriter.PlanRewriter
-import org.neo4j.cypher.internal.compiler.v3_5.planner.{CheckForUnresolvedTokens, ResolveTokens}
-import org.opencypher.v9_0.frontend.phases._
+import org.neo4j.cypher.internal.compiler.v3_5.planner.logical.steps.replacePropertyLookupsWithVariables
+import org.neo4j.cypher.internal.compiler.v3_5.planner.CheckForUnresolvedTokens
+import org.neo4j.cypher.internal.compiler.v3_5.planner.ResolveTokens
 import org.neo4j.cypher.internal.ir.v3_5.UnionQuery
-import org.neo4j.cypher.internal.planner.v3_5.spi.{IDPPlannerName, PlannerNameFor}
+import org.neo4j.cypher.internal.planner.v3_5.spi.IDPPlannerName
+import org.neo4j.cypher.internal.planner.v3_5.spi.PlannerNameFor
 import org.neo4j.cypher.internal.v3_5.logical.plans.LogicalPlan
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer
-import org.opencypher.v9_0.rewriting.RewriterStepSequencer
+import org.neo4j.cypher.internal.v3_5.frontend.phases.CompilationPhaseTracer
+import org.neo4j.cypher.internal.v3_5.frontend.phases._
+import org.neo4j.cypher.internal.v3_5.rewriting.{Deprecations, RewriterStepSequencer}
+import org.neo4j.cypher.internal.v3_5.util.InputPosition
 
-case class CypherPlanner[Context <: PlannerContext](astRewriter: ASTRewriter,
-                                                    monitors: Monitors,
+case class CypherPlanner[Context <: PlannerContext](monitors: Monitors,
                                                     sequencer: String => RewriterStepSequencer,
                                                     metricsFactory: MetricsFactory,
                                                     config: CypherPlannerConfiguration,
                                                     updateStrategy: UpdateStrategy,
                                                     clock: Clock,
                                                     contextCreation: ContextCreator[Context]) {
+
   def normalizeQuery(state: BaseState, context: Context): BaseState = prepareForCaching.transform(state, context)
 
   def planPreparedQuery(state: BaseState, context: Context): LogicalPlanState = {
@@ -65,7 +69,7 @@ case class CypherPlanner[Context <: PlannerContext](astRewriter: ASTRewriter,
     //TODO: these nulls are a short cut
     val context = contextCreation.create(tracer, notificationLogger, planContext = null, rawQueryText, debugOptions,
       offset, monitors, metricsFactory, null, config, updateStrategy, clock, logicalPlanIdGen = null, evaluator = null)
-    CompilationPhases.parsing(sequencer).transform(startState, context)
+    CompilationPhases.parsing(sequencer, deprecations = Deprecations.V2).transform(startState, context)
   }
 
   val prepareForCaching: Transformer[PlannerContext, BaseState, BaseState] =
@@ -80,10 +84,11 @@ case class CypherPlanner[Context <: PlannerContext](astRewriter: ASTRewriter,
 
   val costBasedPlanning: Transformer[PlannerContext, LogicalPlanState, LogicalPlanState] =
     QueryPlanner().adds(CompilationContains[LogicalPlan]) andThen
-    PlanRewriter(sequencer) andThen
-    If((s: LogicalPlanState) => s.unionQuery.readOnly) (
-      CheckForUnresolvedTokens
-    )
+      PlanRewriter(sequencer) andThen
+      replacePropertyLookupsWithVariables andThen
+      If((s: LogicalPlanState) => s.unionQuery.readOnly)(
+        CheckForUnresolvedTokens
+      )
 
   val standardPipeline: Transformer[Context, BaseState, LogicalPlanState] =
     CompilationPhases.lateAstRewriting andThen
@@ -107,4 +112,5 @@ case class CypherPlannerConfiguration(queryCacheSize: Int,
                                       legacyCsvQuoteEscaping: Boolean,
                                       csvBufferSize: Int,
                                       nonIndexedLabelWarningThreshold: Long,
-                                      planWithMinimumCardinalityEstimates: Boolean)
+                                      planWithMinimumCardinalityEstimates: Boolean,
+                                      lenientCreateRelationship: Boolean)

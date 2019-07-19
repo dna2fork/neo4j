@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,16 +23,13 @@ import org.eclipse.collections.api.iterator.LongIterator;
 import org.eclipse.collections.api.map.primitive.IntObjectMap;
 import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
 import org.eclipse.collections.api.set.primitive.LongSet;
-import org.eclipse.collections.api.set.primitive.MutableIntSet;
 import org.eclipse.collections.api.set.primitive.MutableLongSet;
 import org.eclipse.collections.impl.iterator.ImmutableEmptyLongIterator;
 import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
-import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import org.eclipse.collections.impl.set.mutable.primitive.LongHashSet;
 
 import org.neo4j.collection.PrimitiveLongCollections;
-import org.neo4j.kernel.impl.newapi.RelationshipDirection;
-import org.neo4j.storageengine.api.Direction;
+import org.neo4j.storageengine.api.RelationshipDirection;
 
 import static java.lang.Math.toIntExact;
 
@@ -76,39 +73,20 @@ public class RelationshipChangesForNode
     private MutableIntObjectMap<MutableLongSet> incoming;
     private MutableIntObjectMap<MutableLongSet> loops;
 
-    private int totalOutgoing;
-    private int totalIncoming;
-    private int totalLoops;
-
     public RelationshipChangesForNode( DiffStrategy diffStrategy )
     {
         this.diffStrategy = diffStrategy;
     }
 
-    public void addRelationship( long relId, int typeId, Direction direction )
+    public void addRelationship( long relId, int typeId, RelationshipDirection direction )
     {
         final MutableIntObjectMap<MutableLongSet> relTypeToRelsMap = getTypeToRelMapForDirection( direction );
         final MutableLongSet rels = relTypeToRelsMap.getIfAbsentPut( typeId, LongHashSet::new );
 
         rels.add( relId );
-
-        switch ( direction )
-        {
-            case INCOMING:
-                totalIncoming++;
-                break;
-            case OUTGOING:
-                totalOutgoing++;
-                break;
-            case BOTH:
-                totalLoops++;
-                break;
-            default:
-                throw new IllegalArgumentException( "Unknown direction: " + direction );
-        }
     }
 
-    public boolean removeRelationship( long relId, int typeId, Direction direction )
+    public boolean removeRelationship( long relId, int typeId, RelationshipDirection direction )
     {
         final MutableIntObjectMap<MutableLongSet> relTypeToRelsMap = getTypeToRelMapForDirection( direction );
         final MutableLongSet rels = relTypeToRelsMap.get( typeId );
@@ -118,76 +96,9 @@ public class RelationshipChangesForNode
             {
                 relTypeToRelsMap.remove( typeId );
             }
-
-            switch ( direction )
-            {
-            case INCOMING:
-                totalIncoming--;
-                break;
-            case OUTGOING:
-                totalOutgoing--;
-                break;
-            case BOTH:
-                totalLoops--;
-                break;
-            default:
-                throw new IllegalArgumentException( "Unknown direction: " + direction );
-            }
             return true;
         }
         return false;
-    }
-
-    public int augmentDegree( Direction direction, int degree )
-    {
-        switch ( direction )
-        {
-            case INCOMING:
-                return diffStrategy.augmentDegree( degree, totalIncoming + totalLoops );
-            case OUTGOING:
-                return diffStrategy.augmentDegree( degree, totalOutgoing + totalLoops );
-            default:
-                return diffStrategy.augmentDegree( degree, totalIncoming + totalOutgoing + totalLoops );
-        }
-    }
-
-    public int augmentDegree( Direction direction, int degree, int typeId )
-    {
-        switch ( direction )
-        {
-            case INCOMING:
-                if ( incoming != null && incoming.containsKey( typeId ) )
-                {
-                    degree = diffStrategy.augmentDegree( degree, incoming.get( typeId ).size() );
-                }
-                break;
-            case OUTGOING:
-                if ( outgoing != null && outgoing.containsKey( typeId ) )
-                {
-                    degree = diffStrategy.augmentDegree( degree, outgoing.get( typeId ).size() );
-                }
-                break;
-            case BOTH:
-                if ( outgoing != null && outgoing.containsKey( typeId ) )
-                {
-                    degree = diffStrategy.augmentDegree( degree, outgoing.get( typeId ).size() );
-                }
-                if ( incoming != null && incoming.containsKey( typeId ) )
-                {
-                    degree = diffStrategy.augmentDegree( degree, incoming.get( typeId ).size() );
-                }
-                break;
-
-            default:
-                throw new IllegalArgumentException( "Unknown direction: " + direction );
-        }
-
-        // Loops are always included
-        if ( loops != null && loops.containsKey( typeId ) )
-        {
-            degree = diffStrategy.augmentDegree( degree, loops.get( typeId ).size() );
-        }
-        return degree;
     }
 
     public int augmentDegree( RelationshipDirection direction, int degree, int typeId )
@@ -218,24 +129,6 @@ public class RelationshipChangesForNode
         }
 
         return degree;
-    }
-
-    public MutableIntSet relationshipTypes()
-    {
-        final MutableIntSet types = new IntHashSet();
-        if ( outgoing != null && !outgoing.isEmpty() )
-        {
-            outgoing.keySet().forEach( types::add );
-        }
-        if ( incoming != null && !incoming.isEmpty() )
-        {
-            incoming.keySet().forEach( types::add );
-        }
-        if ( loops != null && !loops.isEmpty() )
-        {
-            loops.keySet().forEach( types::add );
-        }
-        return types;
     }
 
     public void clear()
@@ -281,7 +174,7 @@ public class RelationshipChangesForNode
         return loops;
     }
 
-    private MutableIntObjectMap<MutableLongSet> getTypeToRelMapForDirection( Direction direction )
+    private MutableIntObjectMap<MutableLongSet> getTypeToRelMapForDirection( RelationshipDirection direction )
     {
         final MutableIntObjectMap<MutableLongSet> relTypeToRelsMap;
         switch ( direction )
@@ -292,7 +185,7 @@ public class RelationshipChangesForNode
             case OUTGOING:
                 relTypeToRelsMap = outgoing();
                 break;
-            case BOTH:
+            case LOOP:
                 relTypeToRelsMap = loops();
                 break;
             default:

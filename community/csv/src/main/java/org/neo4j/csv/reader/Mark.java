@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -91,6 +91,6 @@ public class Mark
     @Override
     public String toString()
     {
-        return format( "Mark[from:%d, to:%d, qutoed:%b]", startPosition, position, quoted);
+        return format( "Mark[from:%d, to:%d, quoted:%b]", startPosition, position, quoted);
     }
 }

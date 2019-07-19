@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -46,12 +46,17 @@ public enum NotificationCode
         Status.Statement.FeatureDeprecationWarning,
         "Using PLANNER for switching between planners has been deprecated, please use CYPHER planner=[rule,cost] instead"
     ),
-    DEPRECATED_PLANNER(
+    DEPRECATED_RULE_PLANNER(
         SeverityLevel.WARNING,
         Status.Statement.FeatureDeprecationWarning,
         "The rule planner, which was used to plan this query, is deprecated and will be discontinued soon. " +
                 "If you did not explicitly choose the rule planner, you should try to change your query so that the " +
                 "rule planner is not used"
+    ),
+    DEPRECATED_COMPILED_RUNTIME(
+            SeverityLevel.WARNING,
+            Status.Statement.FeatureDeprecationWarning,
+            "The compiled runtime, which was requested to execute this query, is deprecated and will be removed in a future release."
     ),
     PLANNER_UNSUPPORTED(
         SeverityLevel.WARNING,
@@ -181,6 +186,11 @@ public enum NotificationCode
             Status.Statement.PlannerUnavailableWarning,
         "CREATE UNIQUE is unsupported for current CYPHER version, the query has been executed by an older CYPHER version"
     ),
+    CREATE_UNIQUE_DEPRECATED(
+            SeverityLevel.WARNING,
+            Status.Statement.FeatureDeprecationWarning,
+            "CREATE UNIQUE is deprecated and will be removed in a future version."
+    ),
     START_UNAVAILABLE_FALLBACK(
             SeverityLevel.WARNING,
             Status.Statement.PlannerUnavailableWarning,
@@ -194,10 +204,16 @@ public enum NotificationCode
             SeverityLevel.WARNING,
             Status.Statement.ExperimentalFeature,
             "You are using an experimental feature" ),
-    SUBOPTIMAL_INDEX_FOR_WILDCARD_QUERY(
+    SUBOPTIMAL_INDEX_FOR_CONTAINS_QUERY(
             SeverityLevel.INFORMATION,
             Status.Statement.SuboptimalIndexForWildcardQuery,
-            "Index cannot execute wildcard query efficiently" );
+            "If the performance of this statement using `CONTAINS` doesn't meet your expectations check out the alternative index-providers, see " +
+                    "documentation on index configuration." ),
+    SUBOPTIMAL_INDEX_FOR_ENDS_WITH_QUERY(
+            SeverityLevel.INFORMATION,
+            Status.Statement.SuboptimalIndexForWildcardQuery,
+            "If the performance of this statement using `ENDS WITH` doesn't meet your expectations check out the alternative index-providers, see " +
+                    "documentation on index configuration." );
 
     private final Status status;
     private final String description;

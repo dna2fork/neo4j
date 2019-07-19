@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -29,10 +29,10 @@ import java.util.Map;
 import org.neo4j.helpers.MathUtil;
 import org.neo4j.kernel.DeadlockDetectedException;
 import org.neo4j.kernel.impl.locking.LockAcquisitionTimeoutException;
-import org.neo4j.kernel.impl.locking.LockTracer;
 import org.neo4j.kernel.impl.locking.LockType;
-import org.neo4j.kernel.impl.locking.LockWaitEvent;
 import org.neo4j.logging.Logger;
+import org.neo4j.storageengine.api.lock.LockTracer;
+import org.neo4j.storageengine.api.lock.LockWaitEvent;
 
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.interrupted;
@@ -619,7 +619,7 @@ class RWLock
         sb.append( "Locking transactions:\n" );
         for ( TxLockElement tle : txLockElementMap.values() )
         {
-            sb.append( "" ).append( tle.tx ).append( "(" ).append( tle.readCount ).append( "r," )
+            sb.append( tle.tx ).append( "(" ).append( tle.readCount ).append( "r," )
               .append( tle.writeCount ).append( "w)\n" );
         }
         return sb.toString();

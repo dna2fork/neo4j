@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -20,13 +20,13 @@
 package org.neo4j.cypher.internal.runtime.interpreted.pipes
 
 import org.mockito.Mockito._
-import org.opencypher.v9_0.util.test_helpers.CypherFunSuite
-import org.opencypher.v9_0.util.NameId._
-import org.opencypher.v9_0.ast.semantics.SemanticTable
+import org.neo4j.cypher.internal.v3_5.util.test_helpers.CypherFunSuite
+import org.neo4j.cypher.internal.v3_5.util.NameId._
+import org.neo4j.cypher.internal.v3_5.ast.semantics.SemanticTable
 import org.neo4j.cypher.internal.runtime.QueryContext
 import org.neo4j.cypher.internal.runtime.interpreted.{ImplicitDummyPos, QueryStateHelper}
-import org.opencypher.v9_0.util.{LabelId, RelTypeId}
-import org.opencypher.v9_0.expressions.{LabelName, RelTypeName}
+import org.neo4j.cypher.internal.v3_5.util.{LabelId, RelTypeId}
+import org.neo4j.cypher.internal.v3_5.expressions.{LabelName, RelTypeName}
 import org.neo4j.values.storable.Values.longValue
 
 class RelationshipCountFromCountStorePipeTest extends CypherFunSuite with ImplicitDummyPos {

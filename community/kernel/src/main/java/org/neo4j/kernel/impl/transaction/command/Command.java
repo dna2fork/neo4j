@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,6 +24,7 @@ import java.util.Collection;
 
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.kernel.impl.api.CommandVisitor;
+import org.neo4j.kernel.impl.storageengine.impl.recordstorage.PropertyRecordChange;
 import org.neo4j.kernel.impl.store.record.AbstractBaseRecord;
 import org.neo4j.kernel.impl.store.record.DynamicRecord;
 import org.neo4j.kernel.impl.store.record.LabelTokenRecord;
@@ -38,7 +39,6 @@ import org.neo4j.kernel.impl.store.record.RelationshipRecord;
 import org.neo4j.kernel.impl.store.record.RelationshipTypeTokenRecord;
 import org.neo4j.kernel.impl.store.record.SchemaRecord;
 import org.neo4j.kernel.impl.store.record.TokenRecord;
-import org.neo4j.kernel.impl.transaction.state.PropertyRecordChange;
 import org.neo4j.storageengine.api.StorageCommand;
 import org.neo4j.storageengine.api.WritableChannel;
 import org.neo4j.storageengine.api.schema.SchemaRule;
@@ -89,44 +89,6 @@ public abstract class Command implements StorageCommand
         {
             return fromRecordState( record.isCreated(), record.inUse() );
         }
-    }
-
-    /**
-     * Many commands have before/after versions of their records. In some scenarios there's a need
-     * to parameterize which of those to work with.
-     */
-    public enum Version
-    {
-        /**
-         * The "before" version of a command's record. I.e. the record how it looked before changes took place.
-         */
-        BEFORE
-        {
-            @Override
-            <RECORD extends AbstractBaseRecord> RECORD select( BaseCommand<RECORD> command )
-            {
-                return command.getBefore();
-            }
-        },
-        /**
-         * The "after" version of a command's record. I.e. the record how it looks after changes took place.
-         */
-        AFTER
-        {
-            @Override
-            <RECORD extends AbstractBaseRecord> RECORD select( BaseCommand<RECORD> command )
-            {
-                return command.getAfter();
-            }
-        };
-
-        /**
-         * Selects one of the versions of a {@link BaseCommand}.
-         *
-         * @param command command to select a version from.
-         * @return the specific record version in this command.
-         */
-        abstract <RECORD extends AbstractBaseRecord> RECORD select( BaseCommand<RECORD> command );
     }
 
     protected final void setup( long key, Mode mode )
@@ -416,6 +378,19 @@ public abstract class Command implements StorageCommand
         public boolean handle( CommandVisitor handler ) throws IOException
         {
             return handler.visitPropertyCommand( this );
+        }
+
+        public long getEntityId()
+        {
+            if ( after.isNodeSet() )
+            {
+                return after.getNodeId();
+            }
+            if ( after.isRelSet() )
+            {
+                return after.getRelId();
+            }
+            throw new UnsupportedOperationException( format( "Unexpected owner of property %s, neither a node nor a relationship", after ) );
         }
 
         public long getNodeId()

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.neo4j.memory.GlobalMemoryTracker;
+import org.neo4j.scheduler.DaemonThreadFactory;
 import org.neo4j.unsafe.impl.internal.dragons.UnsafeUtil;
 
 class SequenceLockStressIT

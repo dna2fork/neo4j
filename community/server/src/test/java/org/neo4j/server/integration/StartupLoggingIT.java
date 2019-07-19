@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -82,9 +82,9 @@ public class StartupLoggingIT extends ExclusiveServerTestBase
     {
         Map<String,String> properties = new HashMap<>();
 
-        properties.put( GraphDatabaseSettings.data_directory.name(), testDir.graphDbDir().toString() );
-        properties.put( GraphDatabaseSettings.logs_directory.name(), testDir.graphDbDir().toString() );
-        properties.put( LegacySslPolicyConfig.certificates_directory.name(), testDir.graphDbDir().toString() );
+        properties.put( GraphDatabaseSettings.data_directory.name(), testDir.databaseDir().toString() );
+        properties.put( GraphDatabaseSettings.logs_directory.name(), testDir.databaseDir().toString() );
+        properties.put( LegacySslPolicyConfig.certificates_directory.name(), testDir.databaseDir().toString() );
         properties.put( GraphDatabaseSettings.allow_upgrade.name(), Settings.TRUE );
 
         HttpConnector http = new HttpConnector( "http", Encryption.NONE );

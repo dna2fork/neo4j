@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,16 +19,14 @@
  */
 package org.neo4j.kernel.impl.api;
 
-import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
 import org.eclipse.collections.api.map.primitive.MutableLongObjectMap;
-import org.eclipse.collections.api.set.primitive.MutableIntSet;
 import org.eclipse.collections.api.set.primitive.MutableLongSet;
+import org.eclipse.collections.impl.map.mutable.primitive.LongObjectHashMap;
 import org.junit.Before;
 import org.mockito.Mockito;
 
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 import org.neo4j.collection.pool.Pool;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -39,17 +37,16 @@ import org.neo4j.io.pagecache.tracing.cursor.PageCursorTracerSupplier;
 import org.neo4j.io.pagecache.tracing.cursor.context.EmptyVersionContextSupplier;
 import org.neo4j.kernel.api.explicitindex.AutoIndexing;
 import org.neo4j.kernel.api.txstate.ExplicitIndexTransactionState;
+import org.neo4j.kernel.api.txstate.auxiliary.AuxiliaryTransactionStateManager;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.impl.api.index.IndexingService;
 import org.neo4j.kernel.impl.constraints.StandardConstraintSemantics;
 import org.neo4j.kernel.impl.factory.CanWrite;
 import org.neo4j.kernel.impl.index.ExplicitIndexStore;
-import org.neo4j.kernel.impl.locking.LockTracer;
 import org.neo4j.kernel.impl.locking.Locks;
 import org.neo4j.kernel.impl.locking.NoOpClient;
 import org.neo4j.kernel.impl.locking.SimpleStatementLocks;
 import org.neo4j.kernel.impl.locking.StatementLocks;
-import org.neo4j.kernel.impl.newapi.DefaultCursors;
 import org.neo4j.kernel.impl.store.MetaDataStore;
 import org.neo4j.kernel.impl.store.NeoStores;
 import org.neo4j.kernel.impl.transaction.TransactionHeaderInformationFactory;
@@ -59,6 +56,7 @@ import org.neo4j.kernel.impl.transaction.command.Command;
 import org.neo4j.kernel.impl.transaction.log.TransactionIdStore;
 import org.neo4j.kernel.impl.transaction.tracing.CommitEvent;
 import org.neo4j.kernel.impl.transaction.tracing.TransactionTracer;
+import org.neo4j.kernel.impl.util.Dependencies;
 import org.neo4j.kernel.impl.util.collection.CollectionsFactory;
 import org.neo4j.kernel.impl.util.collection.OnHeapCollectionsFactory;
 import org.neo4j.kernel.impl.util.diffsets.MutableLongDiffSetsImpl;
@@ -69,10 +67,13 @@ import org.neo4j.storageengine.api.StorageCommand;
 import org.neo4j.storageengine.api.StorageEngine;
 import org.neo4j.storageengine.api.StorageReader;
 import org.neo4j.storageengine.api.TransactionApplicationMode;
+import org.neo4j.storageengine.api.lock.LockTracer;
 import org.neo4j.storageengine.api.lock.ResourceLocker;
 import org.neo4j.storageengine.api.txstate.ReadableTransactionState;
+import org.neo4j.storageengine.api.txstate.TxStateVisitor;
 import org.neo4j.time.Clocks;
 import org.neo4j.time.FakeClock;
+import org.neo4j.values.storable.Value;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -82,6 +83,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.neo4j.internal.kernel.api.security.LoginContext.AUTH_DISABLED;
 import static org.neo4j.kernel.impl.transaction.log.TransactionIdStore.BASE_TX_COMMIT_TIMESTAMP;
+import static org.neo4j.test.MockedNeoStores.mockedTokenHolders;
 
 public class KernelTransactionTestBase
 {
@@ -90,8 +92,8 @@ public class KernelTransactionTestBase
     protected final MetaDataStore metaDataStore = mock( MetaDataStore.class );
     protected final StorageReader readLayer = mock( StorageReader.class );
     protected final TransactionHooks hooks = new TransactionHooks();
+    protected final AuxiliaryTransactionStateManager auxTxStateManager = new KernelAuxTransactionStateManager();
     protected final ExplicitIndexTransactionState explicitIndexState = mock( ExplicitIndexTransactionState.class );
-    protected final Supplier<ExplicitIndexTransactionState> explicitIndexStateSupplier = () -> explicitIndexState;
     protected final TransactionMonitor transactionMonitor = mock( TransactionMonitor.class );
     protected final CapturingCommitProcess commitProcess = new CapturingCommitProcess();
     protected final TransactionHeaderInformation headerInformation = mock( TransactionHeaderInformation.class );
@@ -118,7 +120,8 @@ public class KernelTransactionTestBase
                     anyCollection(),
                     any( ReadableTransactionState.class ),
                     any( StorageReader.class ), any( ResourceLocker.class ),
-                    anyLong() );
+                    anyLong(),
+                    any( TxStateVisitor.Decorator.class ) );
     }
 
     public KernelTransactionImplementation newTransaction( long transactionTimeoutMillis )
@@ -152,7 +155,7 @@ public class KernelTransactionTestBase
     {
         KernelTransactionImplementation tx = newNotInitializedTransaction();
         StatementLocks statementLocks = new SimpleStatementLocks( locks );
-        SecurityContext securityContext = loginContext.authorize( s -> -1 );
+        SecurityContext securityContext = loginContext.authorize( s -> -1, GraphDatabaseSettings.DEFAULT_DATABASE_NAME );
         tx.initialize( lastTransactionIdWhenStarted, BASE_TX_COMMIT_TIMESTAMP,statementLocks, Type.implicit,
                 securityContext, transactionTimeout, 1L );
         return tx;
@@ -160,13 +163,11 @@ public class KernelTransactionTestBase
 
     public KernelTransactionImplementation newNotInitializedTransaction()
     {
-        return new KernelTransactionImplementation( statementOperations, schemaWriteGuard, hooks, null, null, headerInformationFactory, commitProcess,
-                transactionMonitor, explicitIndexStateSupplier, txPool, clock, new AtomicReference<>( CpuClock.NOT_AVAILABLE ),
+        return new KernelTransactionImplementation( Config.defaults(), statementOperations, schemaWriteGuard, hooks, null, null, headerInformationFactory,
+                commitProcess, transactionMonitor, auxTxStateManager, txPool, clock, new AtomicReference<>( CpuClock.NOT_AVAILABLE ),
                 new AtomicReference<>( HeapAllocation.NOT_AVAILABLE ), TransactionTracer.NULL, LockTracer.NONE, PageCursorTracerSupplier.NULL, storageEngine,
-                new CanWrite(), new DefaultCursors(), AutoIndexing.UNSUPPORTED,
-                mock( ExplicitIndexStore.class ), EmptyVersionContextSupplier.EMPTY, () -> collectionsFactory,
-                new StandardConstraintSemantics(), mock( SchemaState.class),
-                mock( IndexingService.class) );
+                new CanWrite(), AutoIndexing.UNSUPPORTED, mock( ExplicitIndexStore.class ), EmptyVersionContextSupplier.EMPTY, () -> collectionsFactory,
+                new StandardConstraintSemantics(), mock( SchemaState.class ), mock( IndexingService.class ), mockedTokenHolders(), new Dependencies() );
     }
 
     public class CapturingCommitProcess implements TransactionCommitProcess
@@ -195,27 +196,15 @@ public class KernelTransactionTestBase
         }
 
         @Override
-        public MutableIntSet newIntSet()
-        {
-            return OnHeapCollectionsFactory.INSTANCE.newIntSet();
-        }
-
-        @Override
-        public <V> MutableLongObjectMap<V> newLongObjectMap()
-        {
-            return OnHeapCollectionsFactory.INSTANCE.newLongObjectMap();
-        }
-
-        @Override
-        public <V> MutableIntObjectMap<V> newIntObjectMap()
-        {
-            return OnHeapCollectionsFactory.INSTANCE.newIntObjectMap();
-        }
-
-        @Override
         public MutableLongDiffSetsImpl newLongDiffSets()
         {
             return OnHeapCollectionsFactory.INSTANCE.newLongDiffSets();
+        }
+
+        @Override
+        public MutableLongObjectMap<Value> newValuesMap()
+        {
+            return new LongObjectHashMap<>();
         }
 
         @Override
@@ -225,9 +214,9 @@ public class KernelTransactionTestBase
         }
 
         @Override
-        public boolean collectionsMustBeReleased()
+        public void release()
         {
-            return false;
+            // nop
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,8 +19,8 @@
  */
 package org.neo4j.cypher.internal.v3_5.logical.plans
 
-import org.opencypher.v9_0.expressions.Expression
-import org.opencypher.v9_0.util.attribution.IdGen
+import org.neo4j.cypher.internal.v3_5.expressions.Expression
+import org.neo4j.cypher.internal.v3_5.util.attribution.IdGen
 
 /**
   * Distinct produces source rows without changing them, but omitting rows
@@ -29,10 +29,8 @@ import org.opencypher.v9_0.util.attribution.IdGen
   */
 case class Distinct(source: LogicalPlan,
                     groupingExpressions: Map[String, Expression])
-                   (implicit idGen: IdGen) extends LogicalPlan(idGen) with EagerLogicalPlan {
-  override def lhs = Some(source)
+                   (implicit idGen: IdGen) extends LogicalPlan(idGen) with EagerLogicalPlan with ProjectingPlan {
 
-  override def rhs: Option[LogicalPlan] = None
-
+  override val projectExpressions: Map[String, Expression] = groupingExpressions
   override val availableSymbols: Set[String] = groupingExpressions.keySet
 }

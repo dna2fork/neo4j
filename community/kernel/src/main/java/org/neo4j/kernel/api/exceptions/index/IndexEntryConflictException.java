@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -23,7 +23,7 @@ import org.neo4j.internal.kernel.api.TokenNameLookup;
 import org.neo4j.internal.kernel.api.exceptions.KernelException;
 import org.neo4j.internal.kernel.api.schema.SchemaDescriptor;
 import org.neo4j.internal.kernel.api.schema.SchemaUtil;
-import org.neo4j.kernel.api.schema.index.IndexDescriptor;
+import org.neo4j.storageengine.api.schema.IndexDescriptor;
 import org.neo4j.values.storable.Value;
 import org.neo4j.values.storable.ValueTuple;
 
@@ -38,6 +38,17 @@ public class IndexEntryConflictException extends Exception
     private final ValueTuple propertyValues;
     private final long addedNodeId;
     private final long existingNodeId;
+
+    /**
+     * Make IOUtils happy
+     */
+    public IndexEntryConflictException( String message, Throwable cause )
+    {
+        super( message, cause );
+        propertyValues = null;
+        addedNodeId = -1;
+        existingNodeId = -1;
+    }
 
     public IndexEntryConflictException( long existingNodeId, long addedNodeId, Value... propertyValue )
     {

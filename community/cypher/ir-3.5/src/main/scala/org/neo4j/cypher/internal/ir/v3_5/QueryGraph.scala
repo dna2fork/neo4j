@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,15 @@
  */
 package org.neo4j.cypher.internal.ir.v3_5
 
-import org.opencypher.v9_0.ast._
-import org.opencypher.v9_0.frontend.prettifier.ExpressionStringifier
 import org.neo4j.cypher.internal.ir.v3_5.helpers.ExpressionConverters._
-import org.opencypher.v9_0.expressions._
+import org.neo4j.cypher.internal.v3_5.ast._
+import org.neo4j.cypher.internal.v3_5.ast.prettifier.ExpressionStringifier
+import org.neo4j.cypher.internal.v3_5.expressions._
 
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.{GenSeq, GenTraversableOnce, mutable}
+import scala.collection.GenSeq
+import scala.collection.GenTraversableOnce
+import scala.collection.mutable
 import scala.runtime.ScalaRunTime
 
 /*
@@ -97,12 +99,17 @@ case class QueryGraph(// !!! If you change anything here, make sure to update th
     nodes
   }
 
-  def collectAllPatternNodes(f: (String) => Unit): Unit = {
+  def collectAllPatternNodes(f: String => Unit): Unit = {
     patternNodes.foreach(f)
     optionalMatches.foreach(m => m.allPatternNodes.foreach(f))
-    createNodePatterns.foreach(p => f(p.nodeName))
-    mergeNodePatterns.foreach(p => f(p.createNodePattern.nodeName))
-    mergeRelationshipPatterns.foreach(p => p.createNodePatterns.foreach(pp => f(pp.nodeName)))
+    for {
+      create <- createPatterns
+      createNode <- create.nodes
+    } {
+      f(createNode.idName)
+    }
+    mergeNodePatterns.foreach(p => f(p.createNode.idName))
+    mergeRelationshipPatterns.foreach(p => p.createNodes.foreach(pp => f(pp.idName)))
   }
 
   def allPatternRelationshipsRead: Set[PatternRelationship] =
@@ -327,7 +334,7 @@ case class QueryGraph(// !!! If you change anything here, make sure to update th
   }
 
   def containsReads: Boolean = {
-    (patternNodes -- argumentIds).nonEmpty ||
+    (patternNodes.nonEmpty && (patternNodes -- argumentIds).nonEmpty) ||
       patternRelationships.nonEmpty ||
       selections.nonEmpty ||
       shortestPathPatterns.nonEmpty ||
@@ -355,7 +362,7 @@ case class QueryGraph(// !!! If you change anything here, make sure to update th
   override def toString: String = {
     var added = false
     val builder = new StringBuilder("QueryGraph {")
-    val stringifier = ExpressionStringifier()
+    val stringifier = ExpressionStringifier(_.asCanonicalStringVal)
 
     def prettyPattern(p: PatternRelationship): String = {
       val lArrow = if (p.dir == SemanticDirection.INCOMING) "<" else ""

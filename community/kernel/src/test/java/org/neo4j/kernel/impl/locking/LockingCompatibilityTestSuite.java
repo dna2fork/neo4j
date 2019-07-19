@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -35,6 +35,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.storageengine.api.lock.AcquireLockTimeoutException;
+import org.neo4j.storageengine.api.lock.LockTracer;
 import org.neo4j.storageengine.api.lock.ResourceType;
 import org.neo4j.test.OtherThreadExecutor;
 import org.neo4j.test.OtherThreadExecutor.WaitDetails;
@@ -90,7 +91,7 @@ public abstract class LockingCompatibilityTestSuite
         public OtherThreadRule<Void> threadC = new OtherThreadRule<>();
 
         @Rule
-        public TestDirectory testDir = TestDirectory.testDirectory( getClass() );
+        public TestDirectory testDir = TestDirectory.testDirectory();
 
         protected final LockingCompatibilityTestSuite suite;
 

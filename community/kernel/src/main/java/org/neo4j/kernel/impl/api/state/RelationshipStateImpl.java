@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -24,9 +24,11 @@ import org.eclipse.collections.impl.factory.primitive.IntSets;
 
 import java.util.Iterator;
 
-import org.neo4j.kernel.impl.api.RelationshipVisitor;
+import org.neo4j.kernel.impl.util.collection.CollectionsFactory;
+import org.neo4j.storageengine.api.RelationshipVisitor;
 import org.neo4j.storageengine.api.StorageProperty;
 import org.neo4j.storageengine.api.txstate.RelationshipState;
+import org.neo4j.values.storable.Value;
 
 import static java.util.Collections.emptyIterator;
 
@@ -77,27 +79,15 @@ class RelationshipStateImpl extends PropertyContainerStateImpl implements Relati
         }
 
         @Override
-        public StorageProperty getChangedProperty( int propertyKeyId )
-        {
-            return null;
-        }
-
-        @Override
-        public StorageProperty getAddedProperty( int propertyKeyId )
-        {
-            return null;
-        }
-
-        @Override
         public boolean isPropertyChangedOrRemoved( int propertyKey )
         {
             return false;
         }
 
         @Override
-        public boolean isPropertyRemoved( int propertyKeyId )
+        public Value propertyValue( int propertyKey )
         {
-            return false;
+            return null;
         }
     };
 
@@ -105,9 +95,9 @@ class RelationshipStateImpl extends PropertyContainerStateImpl implements Relati
     private long endNode = -1;
     private int type = -1;
 
-    RelationshipStateImpl( long id )
+    RelationshipStateImpl( long id, CollectionsFactory collectionsFactory )
     {
-        super( id );
+        super( id, collectionsFactory );
     }
 
     void setMetaData( long startNode, long endNode, int type )

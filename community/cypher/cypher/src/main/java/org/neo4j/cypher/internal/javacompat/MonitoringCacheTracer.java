@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002-2018 "Neo4j,"
+ * Copyright (c) 2002-2019 "Neo4j,"
  * Neo4j Sweden AB [http://neo4j.com]
  *
  * This file is part of Neo4j.
@@ -19,13 +19,16 @@
  */
 package org.neo4j.cypher.internal.javacompat;
 
+import scala.collection.immutable.Map;
+
 import org.neo4j.cypher.internal.CacheTracer;
 import org.neo4j.cypher.internal.StringCacheMonitor;
+import org.neo4j.helpers.collection.Pair;
 
 /**
  * Adapter for passing CacheTraces into the Monitoring infrastructure.
  */
-public class MonitoringCacheTracer implements CacheTracer<String>
+public class MonitoringCacheTracer implements CacheTracer<Pair<String,scala.collection.immutable.Map<String, Class<?>>>>
 {
     private final StringCacheMonitor monitor;
 
@@ -35,19 +38,25 @@ public class MonitoringCacheTracer implements CacheTracer<String>
     }
 
     @Override
-    public void queryCacheHit( String queryKey, String metaData )
+    public void queryCacheHit( Pair<String,scala.collection.immutable.Map<String, Class<?>>> queryKey, String metaData )
     {
         monitor.cacheHit( queryKey );
     }
 
     @Override
-    public void queryCacheMiss( String queryKey, String metaData )
+    public void queryCacheMiss( Pair<String,scala.collection.immutable.Map<String, Class<?>>> queryKey, String metaData )
     {
         monitor.cacheMiss( queryKey );
     }
 
     @Override
-    public void queryCacheStale( String queryKey, int secondsSincePlan, String metaData )
+    public void queryCacheRecompile( Pair<String,Map<String,Class<?>>> queryKey, String metaData )
+    {
+        monitor.cacheRecompile( queryKey );
+    }
+
+    @Override
+    public void queryCacheStale( Pair<String,scala.collection.immutable.Map<String, Class<?>>> queryKey, int secondsSincePlan, String metaData )
     {
         monitor.cacheDiscard( queryKey, metaData, secondsSincePlan );
     }
